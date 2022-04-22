@@ -24,13 +24,12 @@ while : ; do
 	"--with-capstone4")
 		export USE_CS5=1
 		rm -rf shlr/capstone
-		shift
-		continue
 		;;
 	"--install")
 		export INSTALL_TARGET="install"
-		shift
-		continue
+		;;
+	"--without-pull")
+		export WITHOUT_PULL=1
 		;;
 	-*)
 		# just for the penguin face case
@@ -62,13 +61,13 @@ cd "$(dirname $0)"/..
 pwd
 
 # update
-if [ "$1" != "--without-pull" ]; then
+if [ -z "$WITHOUT_PULL" ]; then
 	if [ -d .git ]; then
 		git branch | grep "^\* master" > /dev/null
 		if [ $? = 0 ]; then
 			echo "WARNING: Updating from remote repository"
 			# Attempt to update from an existing remote
-			UPSTREAM_REMOTE=$(git remote -v | grep 'radareorg/radare2 (fetch)' | cut -f1 | head -n1)
+			UPSTREAM_REMOTE=$(git remote -v | grep 'radareorg/radare2\(\.git\)\? (fetch)' | cut -f1 | head -n1)
 			if [ -n "$UPSTREAM_REMOTE" ]; then
 				git pull "$UPSTREAM_REMOTE" master
 			else
@@ -76,9 +75,6 @@ if [ "$1" != "--without-pull" ]; then
 			fi
 		fi
 	fi
-else
-	export WITHOUT_PULL=1
-	shift
 fi
 
 umask 0002

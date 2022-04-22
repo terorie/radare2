@@ -440,7 +440,11 @@ static void signal_handler(int signum) {
 	if (!crash_handler_cmd) {
 		return;
 	}
+#if __wasi__ || EMSCRIPTEN
+	char *cmd = r_str_newf ("%s %d", crash_handler_cmd, 0);
+#else
 	char *cmd = r_str_newf ("%s %d", crash_handler_cmd, r_sys_getpid ());
+#endif
 	int rc = 1;
 	if (cmd) {
 		r_sys_backtrace ();
@@ -881,7 +885,9 @@ R_API bool r_sys_mkdirp(const char *dir) {
 		}
 		*ptr = 0;
 		if (!r_sys_mkdir (path) && r_sys_mkdir_failed ()) {
-			eprintf ("r_sys_mkdirp: fail '%s' of '%s'\n", path, dir);
+			if (r_sandbox_check (R_SANDBOX_GRAIN_FILES)) {
+				eprintf ("r_sys_mkdirp: fail '%s' of '%s'\n", path, dir);
+			}
 			free (path);
 			return false;
 		}
@@ -915,13 +921,13 @@ R_API void r_sys_perror_str(const char *fun) {
 			0, NULL )) {
 		char *err = r_sys_conv_win_to_utf8 (lpMsgBuf);
 		if (err) {
-			eprintf ("%s: (%#lx) %s%s", fun, dw, err,
+			R_LOG_WARN ("%s: (%#lx) %s%s", fun, dw, err,
 				r_str_endswith (err, "\n") ? "" : "\n");
 			free (err);
 		}
 		LocalFree (lpMsgBuf);
 	} else {
-		eprintf ("%s\n", fun);
+		R_LOG_INFO ("%s", fun);
 	}
 #endif
 }
@@ -1242,7 +1248,7 @@ R_API char *r_sys_whoami(void) {
 #if __WINDOWS__
 	char buf[256];
 	DWORD buf_sz = sizeof (buf);
-	if (!GetUserName ((LPWSTR)buf, (LPDWORD)&buf_sz) ) {
+	if (!GetUserName ((LPSTR)buf, (LPDWORD)&buf_sz) ) {
 		return strdup ("?");
 	}
 	return strdup (buf);
@@ -1270,7 +1276,7 @@ R_API int r_sys_uid(void) {
 	char buf[32];
 	DWORD buf_sz = sizeof (buf);
 	// TODO
-	if (!GetUserName ((LPWSTR)buf, (LPDWORD)&buf_sz) ) {
+	if (!GetUserName ((LPSTR)buf, (LPDWORD)&buf_sz) ) {
 		return 1; //
 	}
 	return 0;
@@ -1313,8 +1319,9 @@ R_API bool r_sys_tts(const char *txt, bool bg) {
 	return false;
 }
 
+static R_TH_LOCAL char *prefix = NULL;
+
 R_API const char *r_sys_prefix(const char *pfx) {
-	static R_TH_LOCAL char *prefix = NULL;
 	if (!prefix) {
 #if __WINDOWS__
 		prefix = r_sys_get_src_dir_w32 ();

@@ -222,7 +222,7 @@ RCoreSymCacheElement *r_coresym_cache_element_new(RBinFile *bf, RBuffer *buf, ut
 		}
 		size_t i;
 		ut8 *cursor = b + R_CS_EL_OFF_SEGS;
-		for (i = 0; i < hdr->n_segments && cursor < end; i++) {
+		for (i = 0; i < hdr->n_segments && cursor + sizeof (RCoreSymCacheElementSegment) < end; i++) {
 			RCoreSymCacheElementSegment *seg = &result->segments[i];
 			seg->paddr = seg->vaddr = r_read_le64 (cursor);
 			cursor += 8;
@@ -269,17 +269,20 @@ RCoreSymCacheElement *r_coresym_cache_element_new(RBinFile *bf, RBuffer *buf, ut
 		for (i = 0; i < hdr->n_sections && cursor < end; i++) {
 			ut8 *sect_start = cursor;
 			RCoreSymCacheElementSection *sect = &result->sections[i];
+			if (cursor + (word_size * 4) > end) {
+				goto beach;
+			}
 			sect->vaddr = sect->paddr = r_read_ble (cursor, false, bits);
 			if (sect->vaddr < page_zero_size) {
 				sect->vaddr += page_zero_size;
 			}
 			cursor += word_size;
-			if (cursor >= end) {
+			if (cursor + word_size >= end) {
 				break;
 			}
 			sect->size = r_read_ble (cursor, false, bits);
 			cursor += word_size;
-			if (cursor >= end) {
+			if (cursor + word_size >= end) {
 				break;
 			}
 			ut64 sect_name_off = r_read_ble (cursor, false, bits);
@@ -291,7 +294,11 @@ RCoreSymCacheElement *r_coresym_cache_element_new(RBinFile *bf, RBuffer *buf, ut
 				cursor += word_size;
 			}
 			string_origin = relative_to_strings? b + start_of_strings : sect_start;
-			sect->name = str_dup_safe (b, string_origin + (size_t)sect_name_off, end);
+			if (sect_name_off < (ut64)(size_t)(end - string_origin)) {
+				sect->name = str_dup_safe (b, string_origin + sect_name_off, end);
+			} else {
+				sect->name = strdup ("");
+			}
 		}
 	}
 	if (hdr->n_symbols) {
@@ -355,6 +362,10 @@ RCoreSymCacheElement *r_coresym_cache_element_new(RBinFile *bf, RBuffer *buf, ut
 				continue;
 			}
 			string_origin = relative_to_strings? b + start_of_strings : cursor;
+			if (!string_origin) {
+				cursor += R_CS_EL_SIZE_LSYM;
+				continue;
+			}
 			lsym->flc.file = str_dup_safe (b, string_origin + file_name_off, end);
 			if (!lsym->flc.file) {
 				cursor += R_CS_EL_SIZE_LSYM;

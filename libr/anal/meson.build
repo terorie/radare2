@@ -58,10 +58,10 @@ r_anal_sources = [
   join_paths('p','anal_ebc.c'),
   join_paths('p','anal_gb.c'),
   join_paths('p','anal_h8300.c'),
-  join_paths('p','anal_hexagon.c'),
   join_paths('p','anal_i4004.c'),
   join_paths('p','anal_i8080.c'),
   join_paths('p','anal_java.c'),
+  join_paths('p','anal_kvx.c'),
   join_paths('p','anal_m680x_cs.c'),
   join_paths('p','anal_m68k_cs.c'),
   join_paths('p','anal_malbolge.c'),
@@ -105,9 +105,8 @@ r_anal_sources = [
   join_paths('arch','ebc','ebc_disas.c'),
   join_paths('arch','wasm','wasm.c'),
   join_paths('arch','v850np','v850dis.c'),
-  join_paths('arch','hexagon','hexagon.c'),
-  join_paths('arch','hexagon','hexagon_anal.c'),
-  join_paths('arch','hexagon','hexagon_disas.c'),
+  join_paths('arch','kvx','kvx-dis.c'),
+  join_paths('arch','kvx','kvx-reg.c'),
   join_paths('arch','loongarch','gnu','loongarch-coder.c'),
   join_paths('arch','loongarch','gnu','loongarch-dis.c'),
   join_paths('arch','loongarch','gnu','loongarch-opc.c'),
@@ -146,7 +145,7 @@ r_anal_sources = [
 ]
 incdirs = [
     'arch/gb',
-    'arch/hexagon'
+    'arch/kvx'
 ]
 
 if get_option('use_v35')
@@ -203,7 +202,33 @@ r_anal = library('r_anal', r_anal_sources,
 )
 
 r_anal_dep = declare_dependency(link_with: r_anal,
-                                include_directories: r_anal_inc)
+  include_directories: r_anal_inc)
+
+if get_option('blob')
+r_anal_static = static_library('r_anal_static', r_anal_sources,
+  include_directories: r_anal_inc,
+  c_args: library_cflags,
+  dependencies: [
+    r_util_static_dep,
+    r_reg_static_dep,
+    r_asm_static_dep,
+    r_crypto_static_dep,
+    r_search_static_dep,
+    r_cons_static_dep,
+    r_parse_static_dep,
+    r_syscall_static_dep,
+    r_flag_static_dep,
+    r_hash_static_dep,
+    java_static_dep,
+    capstone_dep
+  ],
+  install: true,
+  implicit_include_directories: false,
+)
+
+r_anal_static_dep = declare_dependency(link_with: r_anal_static,
+  include_directories: r_anal_inc)
+endif
 
 pkgconfig_mod.generate(r_anal,
   subdirs: 'libr',

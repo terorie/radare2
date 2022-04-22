@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2019-2021 - pancake */
+/* radare - LGPL - Copyright 2019-2022 - pancake */
 
 #include <r_util/r_table.h>
 #include "r_cons.h"
@@ -659,7 +659,7 @@ R_API void r_table_filter(RTable *t, int nth, int op, const char *un) {
 		}
 		if (!ST32_MUL_OVFCHK (page, page_items)) {
 			lrow = page_items * (page - 1);
-			uv = page_items * (page);
+			uv = ((ut64)page_items) * page;
 		}
 	}
 	size_t nrow = 0;
@@ -722,7 +722,7 @@ R_API void r_table_filter(RTable *t, int nth, int op, const char *un) {
 			match = strstr (nn, un) == NULL;
 			break;
 		case '~':
-			match = strstr (nn, un) != NULL;
+			match = strstr (nn, un);
 			break;
 		case 's':
 			match = strlen (nn) == atoi (un);
@@ -1162,7 +1162,7 @@ R_API bool r_table_query(RTable *t, const char *q) {
 		} else if (!strcmp (operation, "cols")) {
 			char *op = strdup (r_str_get (operand));
 			RList *list = r_str_split_list (op, "/", 0);
-			r_list_prepend (list, strdup (columnName));
+			r_list_prepend (list, (char *)columnName);
 			r_table_columns (t, list); // select/reorder columns
 			r_list_free (list);
 			free (op);

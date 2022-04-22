@@ -54,7 +54,7 @@ static void lang_pipe_run_win(RLang *lang) {
 			TerminateProcess (hproc, 0);
 			break;
 		}
-		OVERLAPPED oRead = { 0 };
+		OVERLAPPED oRead = {0};
 		oRead.hEvent = hRead;
 		memset (buf, 0, PIPE_BUF_SIZE);
 		ReadFile (hPipeInOut, buf, PIPE_BUF_SIZE, NULL, &oRead);
@@ -73,7 +73,7 @@ static void lang_pipe_run_win(RLang *lang) {
 		}
 		if (bSuccess && dwRead > 0) {
 			buf[sizeof (buf) - 1] = 0;
-			OVERLAPPED oWrite = { 0 };
+			OVERLAPPED oWrite = {0};
 			oWrite.hEvent = hWritten;
 			char *res = lang->cmd_str ((RCore*)lang->user, buf);
 			if (res) {
@@ -156,18 +156,21 @@ static bool lang_pipe_run(RLang *lang, const char *code, int len) {
 	child = r_sys_fork ();
 	if (child == -1) {
 		/* error */
-		perror ("pipe run");
+		r_sys_perror ("pipe run");
 	} else if (!child) {
 		/* children */
+		int rc = 0;
 		r_sandbox_system (code, 1);
-		write (input[1], "", 1);
+		if (write (input[1], "", 1) != 1) {
+			rc = 1;
+		}
 		close (input[0]);
 		close (input[1]);
 		close (output[0]);
 		close (output[1]);
 		fflush (stdout);
 		fflush (stderr);
-		r_sys_exit (0, true);
+		r_sys_exit (rc, true);
 		return false;
 	} else {
 		/* parent */
@@ -194,11 +197,16 @@ static bool lang_pipe_run(RLang *lang, const char *code, int len) {
 			res = lang->cmd_str ((RCore*)lang->user, buf);
 			if (res) {
 				// r_cons_print (res);
-				(void) write (input[1], res, strlen (res) + 1);
+				size_t res_len = strlen (res) + 1;
+				if (write (input[1], res, res_len) != res_len) {
+					break;
+				}
 				free (res);
 			} else {
 				eprintf ("r_lang_pipe: NULL reply for (%s)\n", buf);
-				(void) write (input[1], "", 1); // NULL byte
+				if (write (input[1], "", 1) != 1) {
+					break;
+				}
 			}
 		}
 		r_cons_break_pop ();
@@ -251,7 +259,7 @@ static bool lang_pipe_run(RLang *lang, const char *code, int len) {
 		r_sys_perror ("lang_pipe_run/CreateEvent hConnected");
 		goto pipe_cleanup;
 	}
-	OVERLAPPED oConnect = { 0 };
+	OVERLAPPED oConnect = {0};
 	oConnect.hEvent = hConnected;
 	hproc = myCreateChildProcess (code);
 	BOOL connected = FALSE;
@@ -289,7 +297,7 @@ beach:
 	free (r2pipe_var);
 	free (r2pipe_paz);
 	free (r2pipe_paz_);
-	return hproc != NULL;
+	return hproc;
 #endif
 #endif
 }

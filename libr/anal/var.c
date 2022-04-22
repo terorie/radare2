@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2010-2020 - pancake, oddcoder */
+/* radare - LGPL - Copyright 2010-2022 - pancake, oddcoder */
 
 #include <r_anal.h>
 #include <r_util.h>
@@ -73,6 +73,7 @@ R_API bool r_anal_function_rebase_vars(RAnal *a, RAnalFunction *fcn) {
 
 	r_list_foreach (var_list, it, var) {
 		// Resync delta in case the registers list changed
+		// XXX imho this is wrong. as it needs to be reordered by the calling convention not by register index
 		if (var->isarg && var->kind == 'r') {
 			RRegItem *reg = r_reg_get (a->reg, var->regname, -1);
 			if (reg) {
@@ -200,12 +201,11 @@ R_API bool r_anal_function_set_var_prot(RAnalFunction *fcn, RList *l) {
 
 R_API void r_anal_var_set_type(RAnalVar *var, const char *type) {
 	char *nt = strdup (type);
-	if (!nt) {
-		return;
+	if (nt) {
+		free (var->type);
+		var->type = nt;
+		shadow_var_struct_members (var);
 	}
-	free (var->type);
-	var->type = nt;
-	shadow_var_struct_members (var);
 }
 
 static void var_free(RAnalVar *var) {
@@ -257,14 +257,18 @@ R_API void r_anal_function_delete_vars_by_kind(RAnalFunction *fcn, RAnalVarKind 
 }
 
 R_API void r_anal_function_delete_all_vars(RAnalFunction *fcn) {
-	void **it;
-	r_pvector_foreach (&fcn->vars, it) {
-		var_free (*it);
+	r_return_if_fail (fcn);
+	if (fcn->vars.v.len > 0) {
+		void **it;
+		r_pvector_foreach (&fcn->vars, it) {
+			var_free (*it);
+		}
 	}
 	r_pvector_clear (&fcn->vars);
 }
 
 R_API void r_anal_function_delete_unused_vars(RAnalFunction *fcn) {
+	r_return_if_fail (fcn);
 	void **v;
 	RPVector *vars_clone = (RPVector *)r_vector_clone ((RVector *)&fcn->vars);
 	r_pvector_foreach (vars_clone, v) {
@@ -283,6 +287,7 @@ R_API void r_anal_function_delete_var(RAnalFunction *fcn, RAnalVar *var) {
 }
 
 R_API RList *r_anal_var_deserialize(const char *ser) {
+	r_return_val_if_fail (ser, NULL);
 	RList *ret = r_list_newf ((RListFree)r_anal_var_proto_free);
 	while (*ser) {
 		RAnalVarProt *v = R_NEW0 (RAnalVarProt);
@@ -381,6 +386,7 @@ static inline void sanitize_var_serial(char *name, bool colon) {
 }
 
 static inline bool serialize_single_var(RAnalVarProt *vp, RStrBuf *sb) {
+	r_return_val_if_fail (vp && sb, false);
 	// shouldn't have special chars in them anyways, so replace in place
 	sanitize_var_serial (vp->name, false);
 	sanitize_var_serial (vp->type, true);
@@ -890,6 +896,7 @@ static RAnalVar *get_stack_var(RAnalFunction *fcn, int delta) {
 static void extract_arg(RAnal *anal, RAnalFunction *fcn, RAnalOp *op, const char *reg, const char *sign, char type) {
 	st64 ptr = 0;
 	char *addr, *esil_buf = NULL;
+	const st64 maxstackframe = 1024 * 8; 
 
 	r_return_if_fail (anal && fcn && op && reg);
 
@@ -975,6 +982,9 @@ static void extract_arg(RAnal *anal, RAnalFunction *fcn, RAnalOp *op, const char
 		} else {
 			frame_off = ptr - fcn->bp_off;
 		}
+		if (maxstackframe != 0 && (frame_off > maxstackframe || frame_off < -maxstackframe)) {
+			goto beach;
+		}
 		RAnalVar *var = get_stack_var (fcn, frame_off);
 		if (var) {
 			r_anal_var_set_access (var, reg, op->addr, rw, ptr);
@@ -1023,6 +1033,12 @@ static void extract_arg(RAnal *anal, RAnalFunction *fcn, RAnalOp *op, const char
 			}
 		}
 		if (varname) {
+#if 0
+			if (isarg && frame_off > 48) {
+				free (varname);
+				goto beach;
+			}
+#endif
 			RAnalVar *var = r_anal_function_set_var (fcn, frame_off, type, vartype, anal->bits / 8, isarg, varname);
 			if (var) {
 				r_anal_var_set_access (var, reg, op->addr, rw, ptr);
@@ -1032,6 +1048,9 @@ static void extract_arg(RAnal *anal, RAnalFunction *fcn, RAnalOp *op, const char
 		free (vartype);
 	} else {
 		st64 frame_off = -(ptr + fcn->bp_off);
+		if (maxstackframe > 0 && (frame_off > maxstackframe || frame_off < -maxstackframe)) {
+			goto beach;
+		}
 		RAnalVar *var = get_stack_var (fcn, frame_off);
 		if (var) {
 			r_anal_var_set_access (var, reg, op->addr, rw, -ptr);
@@ -1333,11 +1352,11 @@ R_API void r_anal_extract_vars(RAnal *anal, RAnalFunction *fcn, RAnalOp *op) {
 	r_return_if_fail (anal && fcn && op);
 
 	const char *BP = anal->reg->name[R_REG_NAME_BP];
-	const char *SP = anal->reg->name[R_REG_NAME_SP];
 	if (BP) {
 		extract_arg (anal, fcn, op, BP, "+", R_ANAL_VAR_KIND_BPV);
 		extract_arg (anal, fcn, op, BP, "-", R_ANAL_VAR_KIND_BPV);
 	}
+	const char *SP = anal->reg->name[R_REG_NAME_SP];
 	if (SP) {
 		extract_arg (anal, fcn, op, SP, "+", R_ANAL_VAR_KIND_SPV);
 	}
@@ -1351,11 +1370,13 @@ static RList *var_generate_list(RAnal *a, RAnalFunction *fcn, int kind) {
 	if (kind < 1) {
 		kind = R_ANAL_VAR_KIND_BPV; // by default show vars
 	}
-	void **it;
-	r_pvector_foreach (&fcn->vars, it) {
-		RAnalVar *var = *it;
-		if (var->kind == kind) {
-			r_list_push (list, var);
+	if (fcn->vars.v.len > 0) {
+		void **it;
+		r_pvector_foreach (&fcn->vars, it) {
+			RAnalVar *var = *it;
+			if (var->kind == kind) {
+				r_list_push (list, var);
+			}
 		}
 	}
 	return list;
@@ -1425,14 +1446,69 @@ R_API RList *r_anal_function_get_var_fields(RAnalFunction *fcn, int kind) {
 	return list;
 }
 
-static int var_comparator(const RAnalVar *a, const RAnalVar *b){
+static int regvar_comparator(const RAnalVar *a, const RAnalVar *b) {
+	if (a && b) {
+		if (a->argnum > b->argnum) {
+			return 1;
+		}
+		if (a->argnum < b->argnum) {
+			return -1;
+		}
+		return 0;
+	} else if (a) {
+		return -1;
+	} else if (b) {
+		return 1;
+	}
+	return 0;
 	// avoid NULL dereference
-	return (a && b)? (a->delta > b->delta) - (a->delta < b->delta) : 0;
+	// return (a && b)? (a->argnum > b->argnum) - (a->argnum < b->argnum): 0;
 }
 
-static int regvar_comparator(const RAnalVar *a, const RAnalVar *b){
+static int var_comparator(const RAnalVar *a, const RAnalVar *b){
+	if (a && b) {
+		if (a->isarg && !b->isarg) {
+			return -1;
+		}
+		if (!a->isarg && b->isarg) {
+			return 1;
+		}
+		if (a->kind == R_ANAL_VAR_KIND_REG && a->kind == b->kind) {
+			return regvar_comparator (a, b);
+		}
+		if (a->kind == b->kind && a->fcn) { // && a->fcn->bits == 32) {
+			if (a->kind == R_ANAL_VAR_KIND_BPV) {
+				if (a->isarg && b->isarg) {
+					if (a->delta > b->delta) {
+						return 1;
+					}
+					if (a->delta < b->delta) {
+						return -1;
+					}
+				}
+				if (a->delta > b->delta) {
+					return -1;
+				}
+				if (a->delta < b->delta) {
+					return 1;
+				}
+			}
+		}
+		if (a->delta > b->delta) {
+			return 1;
+		}
+		if (a->delta < b->delta) {
+			return -1;
+		}
+		return 0;
+	} else if (a) {
+		return 1;
+	} else if (b) {
+		return -1;
+	}
+	return 0;
 	// avoid NULL dereference
-	return (a && b)? (a->argnum > b->argnum) - (a->argnum < b->argnum): 0;
+	// return (a && b)? (a->delta > b->delta) - (a->delta < b->delta) : 0;
 }
 
 R_API void r_anal_var_list_show(RAnal *anal, RAnalFunction *fcn, int kind, int mode, PJ *pj) {
@@ -1619,6 +1695,7 @@ R_API char *r_anal_function_format_sig(R_NONNULL RAnal *anal, R_NONNULL RAnalFun
 		R_NULLABLE RAnalFcnVarsCache *reuse_cache, R_NULLABLE const char *fcn_name_pre, R_NULLABLE const char *fcn_name_post) {
 	RAnalFcnVarsCache *cache = NULL;
 
+	const char *comma = "";
 	if (!fcn_name) {
 		fcn_name = fcn->name;
 		if (!fcn_name) {
@@ -1655,28 +1732,28 @@ R_API char *r_anal_function_format_sig(R_NONNULL RAnal *anal, R_NONNULL RAnalFun
 
 	if (type_fcn_name && r_type_func_exist (TDB, type_fcn_name)) {
 		int i, argc = r_type_func_args_count (TDB, type_fcn_name);
-		bool comma = true;
 		// This avoids false positives present in argument recovery
 		// and straight away print arguments fetched from types db
+#if 1
+// TODO: option to filter unsupported types or not
 		for (i = 0; i < argc; i++) {
 			char *type = r_type_func_args_type (TDB, type_fcn_name, i);
 			const char *name = r_type_func_args_name (TDB, type_fcn_name, i);
 			if (!type || !*type || !name) {
-				eprintf ("Missing type for %s\n", type_fcn_name);
+				// USE RLOG API
+				R_LOG_WARN ("Missing type for '%s'.", type_fcn_name);
 				goto beach;
-			}
-			if (i == argc - 1) {
-				comma = false;
 			}
 			size_t len = strlen (type);
 			const char *tc = len > 0 && type[len - 1] == '*'? "": " ";
-			r_strbuf_appendf (buf, "%s%s%s%s", type, tc, name, comma? ", ": "");
+			r_strbuf_appendf (buf, "%s%s%s%s", comma, type, tc, name);
+			comma = ", ";
 			free (type);
 		}
+#endif
 		goto beach;
 	}
 	R_FREE (type_fcn_name);
-
 
 	cache = reuse_cache;
 	if (!cache) {
@@ -1688,8 +1765,6 @@ R_API char *r_anal_function_format_sig(R_NONNULL RAnal *anal, R_NONNULL RAnalFun
 		r_anal_function_vars_cache_init (anal, cache, fcn);
 	}
 
-	bool comma = true;
-	bool arg_bp = false;
 	size_t tmp_len;
 	RAnalVar *var;
 	RListIter *iter;
@@ -1702,46 +1777,33 @@ R_API char *r_anal_function_format_sig(R_NONNULL RAnal *anal, R_NONNULL RAnalFun
 		}
 		tmp_len = strlen (var->type);
 		if (tmp_len > 0) {
-			r_strbuf_appendf (buf, "%s%s%s%s", var->type,
+			r_strbuf_appendf (buf, "%s%s%s%s", comma, var->type,
 				tmp_len && var->type[tmp_len - 1] == '*' ? "" : " ",
-				var->name, iter->n ? ", " : "");
+				var->name);
+			comma = ", ";
 		}
 	}
 
 	r_list_foreach (cache->bvars, iter, var) {
 		if (var->isarg) {
-			if (!r_list_empty (cache->rvars) && comma) {
-				r_strbuf_append (buf, ", ");
-				comma = false;
-			}
-			arg_bp = true;
 			tmp_len = strlen (var->type);
 			if (tmp_len > 0) {
-				r_strbuf_appendf (buf, "%s%s%s%s", var->type,
+				r_strbuf_appendf (buf, "%s%s%s%s", comma, var->type,
 						tmp_len && var->type[tmp_len - 1] =='*' ? "" : " ",
-						var->name, iter->n ? ", " : "");
+						var->name);
+				comma = ", ";
 			}
 		}
 	}
 
-	comma = true;
-	const char *maybe_comma = ", ";
 	r_list_foreach (cache->svars, iter, var) {
 		if (var->isarg) {
-			if (!*maybe_comma || ((arg_bp || !r_list_empty (cache->rvars)) && comma)) {
-				comma = false;
-				r_strbuf_append (buf, ", ");
-			}
 			tmp_len = strlen (var->type);
-			if (iter->n && ((RAnalVar *)iter->n->data)->isarg) {
-				maybe_comma = ", ";
-			} else {
-				maybe_comma = "";
-			}
 			if (tmp_len > 0) {
-				r_strbuf_appendf (buf, "%s%s%s%s", var->type,
+				r_strbuf_appendf (buf, "%s%s%s%s", comma, var->type,
 					tmp_len && var->type[tmp_len - 1] == '*'? "": " ",
-					var->name, maybe_comma);
+					var->name);
+				comma = ", ";
 			}
 		}
 	}

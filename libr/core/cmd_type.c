@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2020 - pancake, oddcoder, Anton Kochkov, Jody Frankowski */
+/* radare - LGPL - Copyright 2009-2022 - pancake, oddcoder, Anton Kochkov, Jody Frankowski */
 
 #include <string.h>
 #include "r_anal.h"
@@ -8,45 +8,45 @@
 
 static const char *help_msg_t[] = {
 	"Usage: t", "", "# cparse types commands",
-	"t", "", "List all loaded types",
+	"t", "", "list all loaded types",
 	"tj", "", "List all loaded types as json",
-	"t", " <type>", "Show type in 'pf' syntax",
-	"t*", "", "List types info in r2 commands",
-	"t-", " <name>", "Delete types by its name",
-	"t-*", "", "Remove all types",
-	"tail", " [filename]", "Output the last part of files",
-	"tc", " [type.name]", "List all/given types in C output format",
-	"te", "[?]", "List all loaded enums",
-	"td", "[?] <string>", "Load types from string",
-	"tf", "", "List all loaded functions signatures",
-	"tk", " <sdb-query>", "Perform sdb query",
-	"tl", "[?]", "Show/Link type to an address",
+	"t", " <type>", "show type in 'pf' syntax",
+	"t*", "", "list types info in r2 commands",
+	"t-", " <name>", "delete types by its name",
+	"t-*", "", "remove all types",
+	"tail", " [filename]", "output the last part of files",
+	"tc", " [type.name]", "list all/given types in C output format",
+	"te", "[?]", "list all loaded enums",
+	"td", "[?] <string>", "load types from string",
+	"tf", "", "list all loaded functions signatures",
+	"tk", " <sdb-query>", "perform sdb query",
+	"tl", "[?]", "show/Link type to an address",
 	"tn", "[?] [-][addr]", "manage noreturn function attributes and marks",
-	"to", " -", "Open cfg.editor to load types",
-	"to", " <path>", "Load types from C header file",
-	"toe", " [type.name]", "Open cfg.editor to edit types",
-	"tos", " <path>", "Load types from parsed Sdb database",
-	"touch", " <file>", "Create or update timestamp in file",
+	"to", " -", "open cfg.editor to load types",
+	"to", " <path>", "load types from C header file",
+	"toe", " [type.name]", "open cfg.editor to edit types",
+	"tos", " <path>", "load types from parsed Sdb database",
+	"touch", " <file>", "create or update timestamp in file",
 	"tp", "  <type> [addr|varname]", "cast data at <address> to <type> and print it (XXX: type can contain spaces)",
-	"tpv", " <type> @ [value]", "Show offset formatted for given type",
-	"tpx", " <type> <hexpairs>", "Show value for type with specified byte sequence (XXX: type can contain spaces)",
-	"ts", "[?]", "Print loaded struct types",
-	"tu", "[?]", "Print loaded union types",
-	"tx", "[f?]", "Type xrefs",
-	"tt", "[?]", "List all loaded typedefs",
+	"tpv", " <type> @ [value]", "show offset formatted for given type",
+	"tpx", " <type> <hexpairs>", "show value for type with specified byte sequence (XXX: type can contain spaces)",
+	"ts", "[?]", "print loaded struct types",
+	"tu", "[?]", "print loaded union types",
+	"tx", "[f?]", "type xrefs",
+	"tt", "[?]", "list all loaded typedefs",
 	NULL
 };
 
 static const char *help_msg_tcc[] = {
 	"Usage: tcc", "[-name]", "# type function calling conventions (see also afc? and arcc)",
-	"tcc", "", "List all calling convcentions",
-	"tcc", " r0 pascal(r0,r1,r2)", "Define signature for pascall cc (see also arcc)",
-	"tcc", "-pascal", "Remove the pascal cc",
-	"tcc-*", "", "Unregister all the calling conventions",
-	"tcck", "", "List calling conventions in k=v",
-	"tccl", "", "List cc signatures (return ccname (arg0, arg1, ..) err;)",
-	"tccj", "", "List them in JSON",
-	"tcc*", "", "List them as r2 commands",
+	"tcc", "", "list all calling convcentions",
+	"tcc", " r0 pascal(r0,r1,r2)", "define signature for pascall cc (see also arcc)",
+	"tcc", "-pascal", "remove the pascal cc",
+	"tcc-*", "", "unregister all the calling conventions",
+	"tcck", "", "list calling conventions in k=v",
+	"tccl", "", "list cc signatures (return ccname (arg0, arg1, ..) err;)",
+	"tccj", "", "list them in JSON",
+	"tcc*", "", "list them as r2 commands",
 	NULL
 };
 
@@ -57,67 +57,67 @@ static const char *help_msg_t_minus[] = {
 
 static const char *help_msg_tf[] = {
 	"Usage: tf[...]", "", "",
-	"tf", "", "List all function definitions loaded",
-	"tf", " <name>", "Show function signature",
-	"tfc", " <name>", "Show function signature in C syntax",
-	"tfcj", " <name>", "Same as above but in JSON",
-	"tfj", "", "List all function definitions in JSON",
-	"tfj", " <name>", "Show function signature in JSON",
+	"tf", "", "list all function definitions loaded",
+	"tf", " <name>", "show function signature",
+	"tfc", " <name>", "show function signature in C syntax",
+	"tfcj", " <name>", "same as above but in JSON",
+	"tfj", "", "list all function definitions in JSON",
+	"tfj", " <name>", "show function signature in JSON",
 	NULL
 };
 
 static const char *help_msg_to[] = {
 	"Usage: to[...]", "", "",
-	"to", " -", "Open cfg.editor to load types",
-	"to", " <path>", "Load types from C header file",
-	"tos", " <path>", "Load types from parsed Sdb database",
-	"touch", " <file>", "Create or update timestamp in file",
+	"to", " -", "open cfg.editor to load types",
+	"to", " <path>", "load types from C header file",
+	"tos", " <path>", "load types from parsed Sdb database",
+	"touch", " <file>", "create or update timestamp in file",
 	NULL
 };
 
 static const char *help_msg_tp[] = {
 	"Usage: tp[...]", "", "",
 	"tp", "  <type> [addr|varname]", "cast data at <address> to <type> and print it (XXX: type can contain spaces)",
-	"tpv", " <type> @ [value]", "Show offset formatted for given type",
-	"tpx", " <type> <hexpairs>", "Show value for type with specified byte sequence (XXX: type can contain spaces)",
+	"tpv", " <type> @ [value]", "show offset formatted for given type",
+	"tpx", " <type> <hexpairs>", "show value for type with specified byte sequence (XXX: type can contain spaces)",
 	NULL
 };
 
 static const char *help_msg_tc[] = {
 	"Usage: tc[...]", " [cctype]", "",
-	"tc", " [type.name]", "List all/given loaded types in C output format with newlines",
-	"tcd", "", "List all loaded types in C output format without newlines",
-	"tcc", "?", "Manage calling conventions types",
+	"tc", " [type.name]", "list all/given loaded types in C output format with newlines",
+	"tcd", "", "list all loaded types in C output format without newlines",
+	"tcc", "?", "manage calling conventions types",
 	"tc?", "", "show this help",
 	NULL
 };
 
 static const char *help_msg_td[] = {
 	"Usage:", "\"td [...]\"", "",
-	"td", "[string]", "Load types from string",
+	"td", "[string]", "load types from string",
 	NULL
 };
 
 static const char *help_msg_te[] = {
 	"Usage: te[...]", "", "",
-	"te", "", "List all loaded enums",
-	"te", " <enum>", "Print all values of enum for given name",
-	"tej", "", "List all loaded enums in json",
-	"tej", " <enum>", "Show enum in json",
-	"te", " <enum> <value>", "Show name for given enum number",
-	"teb", " <enum> <name>", "Show matching enum bitfield for given name",
-	"tec", "<name>", "List all/given loaded enums in C output format with newlines",
-	"ted", "", "List all loaded enums in C output format without newlines",
+	"te", "", "list all loaded enums",
+	"te", " <enum>", "print all values of enum for given name",
+	"tej", "", "list all loaded enums in json",
+	"tej", " <enum>", "show enum in json",
+	"te", " <enum> <value>", "show name for given enum number",
+	"teb", " <enum> <name>", "show matching enum bitfield for given name",
+	"tec", "<name>", "list all/given loaded enums in C output format with newlines",
+	"ted", "", "list all loaded enums in C output format without newlines",
 	"te?", "", "show this help",
 	NULL
 };
 
 static const char *help_msg_tt[] = {
 	"Usage: tt[...]", "", "",
-	"tt", "", "List all loaded typedefs",
-	"tt", " <typename>", "Show name for given type alias",
-	"ttj", "", "Show typename and type alias in json",
-	"ttc", "<name>", "Show typename and type alias in C output format",
+	"tt", "", "list all loaded typedefs",
+	"tt", " <typename>", "show name for given type alias",
+	"ttj", "", "show typename and type alias in json",
+	"ttc", "<name>", "show typename and type alias in C output format",
 	"tt?", "", "show this help",
 	NULL
 };
@@ -149,29 +149,29 @@ static const char *help_msg_tn[] = {
 
 static const char *help_msg_ts[] = {
 	"Usage: ts[...]", " [type]", "",
-	"ts", "", "List all loaded structs",
-	"ts", " [type]", "Show pf format string for given struct",
-	"tsj", "", "List all loaded structs in json",
-	"tsj", " [type]", "Show pf format string for given struct in json",
-	"ts*", "", "Show pf.<name> format string for all loaded structs",
-	"ts*", " [type]", "Show pf.<name> format string for given struct",
-	"tsc", "<name>", "List all/given loaded structs in C output format with newlines",
-	"tsd", "", "List all loaded structs in C output format without newlines",
-	"tss", " [type]", "Display size of struct",
+	"ts", "", "list all loaded structs",
+	"ts", " [type]", "show pf format string for given struct",
+	"tsj", "", "list all loaded structs in json",
+	"tsj", " [type]", "show pf format string for given struct in json",
+	"ts*", "", "show pf.<name> format string for all loaded structs",
+	"ts*", " [type]", "show pf.<name> format string for given struct",
+	"tsc", "<name>", "list all/given loaded structs in C output format with newlines",
+	"tsd", "", "list all loaded structs in C output format without newlines",
+	"tss", " [type]", "display size of struct",
 	"ts?", "", "show this help",
 	NULL
 };
 
 static const char *help_msg_tu[] = {
 	"Usage: tu[...]", "", "",
-	"tu", "", "List all loaded unions",
-	"tu", " [type]", "Show pf format string for given union",
-	"tuj", "", "List all loaded unions in json",
-	"tuj", " [type]", "Show pf format string for given union in json",
-	"tu*", "", "Show pf.<name> format string for all loaded unions",
-	"tu*", " [type]", "Show pf.<name> format string for given union",
-	"tuc", "<name>", "List all/given loaded unions in C output format with newlines",
-	"tud", "", "List all loaded unions in C output format without newlines",
+	"tu", "", "list all loaded unions",
+	"tu", " [type]", "show pf format string for given union",
+	"tuj", "", "list all loaded unions in json",
+	"tuj", " [type]", "show pf format string for given union in json",
+	"tu*", "", "show pf.<name> format string for all loaded unions",
+	"tu*", " [type]", "show pf.<name> format string for given union",
+	"tuc", "<name>", "list all/given loaded unions in C output format with newlines",
+	"tud", "", "list all loaded unions in C output format without newlines",
 	"tu?", "", "show this help",
 	NULL
 };
@@ -1118,10 +1118,10 @@ static int cmd_type(void *data, const char *input) {
 		break;
 	case 's': { // "ts"
 		switch (input[1]) {
-		case '?':
+		case '?': // "ts?"
 			r_core_cmd_help (core, help_msg_ts);
 			break;
-		case '*':
+		case '*': // "ts*"
 			if (input[2] == ' ') {
 				showFormat (core, r_str_trim_head_ro (input + 2), 1);
 			} else {
@@ -1137,7 +1137,7 @@ static int cmd_type(void *data, const char *input) {
 		case ' ':
 			showFormat (core, r_str_trim_head_ro (input + 1), 0);
 			break;
-		case 's':
+		case 's': // "tss"
 			if (input[2] == ' ') {
 				r_cons_printf ("%" PFMT64u "\n", (r_type_get_bitsize (TDB, input + 3) / 8));
 			} else {
@@ -1652,7 +1652,6 @@ static int cmd_type(void *data, const char *input) {
 				}
 				if (input[1] == 'x' && arg) { // "tpx"
 					r_core_cmdf (core, "pf %s @x:%s", fmt, arg);
-					// eprintf ("pf %s @x:%s", fmt, arg);
 				} else {
 					ut64 addr = arg ? r_num_math (core->num, arg): core->offset;
 					ut64 original_addr = addr;
@@ -1665,20 +1664,28 @@ static int cmd_type(void *data, const char *input) {
 							}
 						}
 					}
+					int type_size = r_type_get_bitsize (core->anal->sdb_types, type) / 8;
+					int obs = core->blocksize;
+					if (type_size > obs) {
+						r_core_block_size (core, type_size);
+					}
 					if (addr != UT64_MAX) {
-						r_core_cmdf (core, "pf %s @ 0x%08" PFMT64x, fmt, addr);
+						r_core_cmdf (core, "pf %s @ 0x%08"PFMT64x, fmt, addr);
 					} else if (original_addr == 0) {
-						r_core_cmdf (core, "pf %s @ 0x%08" PFMT64x, fmt, original_addr);
+						r_core_cmdf (core, "pf %s @ 0x%08"PFMT64x, fmt, original_addr);
+					}
+					if (type_size > obs) {
+						r_core_block_size (core, obs);
 					}
 				}
 				free (fmt);
 				free (type);
 			} else {
-				eprintf ("Usage: tp?\n");
+				r_core_cmd_help (core, help_msg_tp);
 			}
 			free (tmp);
 		} else { // "tp"
-			eprintf ("Usage: tp?\n");
+			r_core_cmd_help (core, help_msg_tp);
 		}
 		break;
 	case '-': // "t-"

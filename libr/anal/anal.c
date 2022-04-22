@@ -378,6 +378,7 @@ R_API ut8 *r_anal_mask(RAnal *anal, int size, const ut8 *data, ut64 at) {
 		}
 		idx += oplen;
 		at += oplen;
+		R_FREE (op->mnemonic);
 	}
 
 	r_anal_op_free (op);
@@ -710,6 +711,7 @@ R_API void r_anal_bind(RAnal *anal, RAnalBind *b) {
 		b->decode = (RAnalDecode)r_anal_op;
 		b->opinit = r_anal_op_init;
 		b->opfini = r_anal_op_fini;
+		b->use = r_anal_use;
 	}
 }
 

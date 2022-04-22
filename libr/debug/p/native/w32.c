@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2010-2021 - pancake, xvilka, gustavo */
+/* radare - LGPL - Copyright 2010-2022 - pancake, xvilka, gustavo */
 
 #include "w32.h"
 
@@ -25,9 +25,9 @@ static HANDLE w32_t2h(pid_t tid) {
 #endif
 
 inline static int w32_h2t(HANDLE h) {
-	if (w32_GetThreadId != NULL) // >= Windows Vista
+	if (w32_GetThreadId) // >= Windows Vista
 		return w32_GetThreadId (h);
-	if (w32_GetProcessId != NULL) // >= Windows XP1
+	if (w32_GetProcessId) // >= Windows XP1
 		return w32_GetProcessId (h);
 	return (int)(size_t)h; // XXX broken
 }
@@ -362,7 +362,7 @@ int w32_dbg_wait(RDebug *dbg, int pid) {
 		case UNLOAD_DLL_DEBUG_EVENT:
 			//eprintf ("(%d) Unloading library at %p\n", pid, de.u.UnloadDll.lpBaseOfDll);
 			lstLibPtr = (PLIB_ITEM)r_debug_findlib (de.u.UnloadDll.lpBaseOfDll);
-			if (lstLibPtr != NULL) {
+			if (lstLibPtr) {
 				lstLibPtr->hFile = (HANDLE)-1;
 			} else {
 				r_debug_lstLibAdd (pid, de.u.UnloadDll.lpBaseOfDll, (HANDLE)-1, "not cached");
@@ -812,7 +812,7 @@ static void w32_info_user(RDebug *dbg, RDebugInfo *rdi) {
 	}
 	tok_usr = (PTOKEN_USER)malloc (tok_len);
 	if (!tok_usr) {
-		perror ("w32_info_user/malloc tok_usr");
+		r_sys_perror ("w32_info_user/malloc tok_usr");
 		goto err_w32_info_user;
 	}
 	if (!GetTokenInformation (h_tok, TokenUser, (LPVOID)tok_usr, tok_len, &tok_len)) {
@@ -821,13 +821,13 @@ static void w32_info_user(RDebug *dbg, RDebugInfo *rdi) {
 	}
 	usr = (LPTSTR)malloc (usr_len);
 	if (!usr) {
-		perror ("w32_info_user/malloc usr");
+		r_sys_perror ("w32_info_user/malloc usr");
 		goto err_w32_info_user;
 	}
 	*usr = '\0';
 	usr_dom = (LPTSTR)malloc (usr_dom_len);
 	if (!usr_dom) {
-		perror ("w32_info_user/malloc usr_dom");
+		r_sys_perror ("w32_info_user/malloc usr_dom");
 		goto err_w32_info_user;
 	}
 	*usr_dom = '\0';
@@ -860,7 +860,7 @@ static void w32_info_exe(RDebug *dbg, RDebugInfo *rdi) {
 	}
 	LPTSTR path = (LPTSTR)malloc (MAX_PATH + 1);
 	if (!path) {
-		perror ("w32_info_exe/malloc path");
+		r_sys_perror ("w32_info_exe/malloc path");
 		goto err_w32_info_exe;
 	}
 	DWORD len = MAX_PATH;

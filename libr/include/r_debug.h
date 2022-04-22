@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #ifndef R2_DEBUG_H
 #define R2_DEBUG_H
@@ -517,16 +517,16 @@ R_API int r_debug_desc_dup(RDebug *dbg, int fd, int newfd);
 R_API int r_debug_desc_read(RDebug *dbg, int fd, ut64 addr, int len);
 R_API int r_debug_desc_seek(RDebug *dbg, int fd, ut64 addr); // TODO: whence?
 R_API int r_debug_desc_write(RDebug *dbg, int fd, ut64 addr, int len);
-R_API int r_debug_desc_list(RDebug *dbg, int rad);
+R_API int r_debug_desc_list(RDebug *dbg, bool show_commands);
 
 /* registers */
-R_API int r_debug_reg_sync(RDebug *dbg, int type, int write);
+R_API bool r_debug_reg_sync(RDebug *dbg, int type, int write);
 R_API bool r_debug_reg_list(RDebug *dbg, int type, int size, PJ *pj, int rad, const char *use_color);
-R_API int r_debug_reg_set(RDebug *dbg, const char *name, ut64 num);
+R_API bool r_debug_reg_set(RDebug *dbg, const char *name, ut64 num);
 R_API ut64 r_debug_reg_get(RDebug *dbg, const char *name);
 R_API ut64 r_debug_reg_get_err(RDebug *dbg, const char *name, int *err, utX *value);
 
-R_API ut64 r_debug_execute(RDebug *dbg, const ut8 *buf, int len, int restore);
+R_API bool r_debug_execute(RDebug *dbg, const ut8 *buf, int len, R_OUT ut64 *ret, bool restore, bool ignore_stack);
 R_API bool r_debug_map_sync(RDebug *dbg);
 
 R_API int r_debug_stop(RDebug *dbg);

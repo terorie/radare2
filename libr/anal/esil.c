@@ -5,7 +5,7 @@
 #include <r_util.h>
 #include <r_bind.h>
 
-#ifdef __wasi__
+#if __wasi__ || EMSCRIPTEN
 #define FE_OVERFLOW 0
 #define feclearexcept(x)
 #endif
@@ -301,7 +301,7 @@ R_API bool r_anal_esil_mem_read(RAnalEsil *esil, ut64 addr, ut8 *buf, int len) {
 	}
 	if (!ret && esil->cb.mem_read) {
 		ret = esil->cb.mem_read (esil, addr, buf, len);
-		if (ret != len) {
+		if (ret != len && ret != 1) { // !ret
 			if (esil->iotrap) {
 				esil->trap = R_ANAL_TRAP_READ_ERR;
 				esil->trap_code = addr;
@@ -607,9 +607,8 @@ R_API bool r_anal_esil_signext(RAnalEsil *esil, bool assign) {
 		free (p_src);
 		free (p_dst);
 		return false;
-	} else {
-		free (p_dst);
 	}
+	free (p_dst);
 	
 	//Make sure the other bits are 0
 	src &= UT64_MAX >> (64 - dst);

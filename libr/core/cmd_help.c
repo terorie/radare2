@@ -1,10 +1,6 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
-#include <stddef.h>
-#include <math.h> // required for signbit
-#include "r_cons.h"
-#include "r_core.h"
-#include "r_util.h"
+#include <r_core.h>
 
 static const char *help_msg_at[] = {
 	"Usage: [.][#]<cmd>[*] [`cmd`] [@ addr] [~grep] [|syscmd] [>[>]file]", "", "",
@@ -34,7 +30,8 @@ static const char *help_msg_at[] = {
 	"@{", "from to}", "temporary set from and to for commands supporting ranges",
 	"@a:", "arch[:bits]", "temporary set arch and bits",
 	"@b:", "bits", "temporary set asm.bits",
-	"@B:", "nth", "temporary seek to nth instruction in current bb (negative numbers too)",
+	"@B:", "nth", "temporary seek to nth instruction in current bb (negative numbers too)", // XXX rename to @n:
+	"@c:", "cmd", "seek to the address printed by the given command. same as '@ `cmd`'",
 	"@e:", "k=v,k=v", "temporary change eval vars",
 	"@f:", "file", "temporary replace block with file contents",
 	"@F:", "flagspace", "temporary change flag space",
@@ -304,7 +301,7 @@ static const char *help_msg_question_v[] = {
 	"$e", "", "1 if end of block, else 0",
 	"$e", "{flag}", "end of flag (flag->offset + flag->size)",
 	"$f", "", "jump fail address (e.g. jz 0x10 => next instruction)",
-	"$F", "", "Same as $FB",
+	"$F", "", "same as $FB",
 	"$Fb", "", "begin of basic block",
 	"$FB", "", "begin of function",
 	"$Fe", "", "end of basic block",
@@ -563,7 +560,7 @@ static int cmd_help(void *data, const char *input) {
 	RIOMap *map;
 	const char *k;
 	RListIter *iter;
-	char *p, out[128] = R_EMPTY;
+	char *p, out[128] = {0};
 	ut64 n;
 	int i;
 	RList *tmp;
@@ -586,7 +583,7 @@ static int cmd_help(void *data, const char *input) {
 				r_prof_start (&prof);
 				r_core_cmd (core, input + 1, 0);
 				r_prof_end (&prof);
-				core->num->value = (ut64)(int)prof.result;
+				r_core_return_code (core, (ut64)(int)prof.result);
 				eprintf ("%lf\n", prof.result);
 				break;
 			}
@@ -619,8 +616,9 @@ static int cmd_help(void *data, const char *input) {
 		if (!r) {
 			r = UT32_MAX >> 1;
 		}
-		core->num->value = (ut64) (b + r_num_rand (r));
-		r_cons_printf ("0x%"PFMT64x"\n", core->num->value);
+		ut64 n = (ut64)b + r_num_rand (r);
+		r_core_return_code (core, n);
+		r_cons_printf ("0x%"PFMT64x"\n", n);
 		}
 		break;
 	case 'a': // "?a"
@@ -822,7 +820,7 @@ static int cmd_help(void *data, const char *input) {
 			} else {
 				n = r_num_math (core->num, "$?");
 			}
-			core->num->value = n; // redundant
+			r_core_return_code (core, n); // redundant
 		}
 		break;
 	case 'v': // "?v"
@@ -879,16 +877,19 @@ static int cmd_help(void *data, const char *input) {
 		default:
 			r_cons_printf ("0x%"PFMT64x"\n", n);
 		}
-		core->num->value = n; // redundant
+		r_core_return_code (core, n); // redundant
 		break;
 	case '=': // "?=" set num->value
 		if (input[1] == '=') { // ?==
 			if (input[2] == ' ') {
 				char *s = strdup (input + 3);
 				char *e = strchr (s, ' ');
+
 				if (e) {
 					*e++ = 0;
-					core->num->value = strcmp (s, e);
+					e = (char *)r_str_trim_head_ro (e);
+					int val = strcmp (s, e);
+					r_core_return_code (core, val);
 				} else {
 					eprintf ("Missing secondary word in expression to compare\n");
 				}
@@ -931,7 +932,9 @@ static int cmd_help(void *data, const char *input) {
 					cmd_help_exclamation (core);
 					return 0;
 				}
-				return core->num->value = r_core_cmd (core, input+1, 0);
+				int cmdres = r_core_cmd (core, input + 1, 0);
+				r_core_return_code (core, cmdres);
+				return cmdres;
 			}
 		} else {
 			r_cons_printf ("0x%"PFMT64x"\n", core->num->value);
@@ -1038,10 +1041,10 @@ static int cmd_help(void *data, const char *input) {
 	case 'l': // "?l"
 		if (input[1] == 'q') {
 			for (input += 2; input[0] == ' '; input++);
-			core->num->value = strlen (input);
+			r_core_return_code (core, strlen (input));
 		} else {
 			for (input++; input[0] == ' '; input++);
-			core->num->value = strlen (input);
+			r_core_return_code (core, strlen (input));
 			r_cons_printf ("%" PFMT64d "\n", core->num->value);
 		}
 		break;
@@ -1085,8 +1088,9 @@ static int cmd_help(void *data, const char *input) {
 		r_core_clippy (core, r_str_trim_head_ro (input + 1));
 		break;
 	case 'e': // "?e" echo
-		r_str_trim_args ((char *)input);
-
+		if (input[1] == ' ' && (input[2] == '"' || input[2] == '\'')) {
+			r_str_trim_args ((char *)input);
+		}
 		switch (input[1]) {
 		case 'a': // "?ea hello world
 			{
@@ -1121,7 +1125,7 @@ static int cmd_help(void *data, const char *input) {
 			r_str_trim (msg);
 			char *p = strchr (msg, '&');
 			if (p) *p = 0;
-			r_sys_tts (msg, p != NULL);
+			r_sys_tts (msg, p);
 			free (msg);
 			break;
 		}
@@ -1293,25 +1297,25 @@ static int cmd_help(void *data, const char *input) {
 		} else {
 			switch (input[1]) {
 			case 'f': // "?if"
-				core->num->value = !r_num_conditional (core->num, input + 2);
+				r_core_return_code (core, !r_num_conditional (core->num, input + 2));
 				eprintf ("%s\n", r_str_bool (!core->num->value));
 				break;
 			case 'm': // "?im"
 				r_cons_message (input + 2);
 				break;
 			case 'p': // "?ip"
-				core->num->value = r_core_yank_hud_path (core, input + 2, 0) == true;
+				r_core_return_code (core, r_core_yank_hud_path (core, input + 2, 0) == true);
 				break;
 			case 'k': // "?ik"
 				 r_cons_any_key (NULL);
 				 break;
 			case 'y': // "?iy"
-				 for (input += 2; *input==' '; input++);
-				 core->num->value = r_cons_yesno (1, "%s? (Y/n)", input);
+				 for (input += 2; *input == ' '; input++);
+				 r_core_return_code (core, r_cons_yesno (1, "%s? (Y/n)", input));
 				 break;
 			case 'n': // "?in"
 				 for (input += 2; *input==' '; input++);
-				 core->num->value = r_cons_yesno (0, "%s? (y/N)", input);
+				 r_core_return_code (core, r_cons_yesno (0, "%s? (y/N)", input));
 				 break;
 			default: {
 				char foo[1024];
@@ -1323,7 +1327,7 @@ static int cmd_help(void *data, const char *input) {
 				r_cons_fgets (foo, sizeof (foo), 0, NULL);
 				foo[sizeof (foo) - 1] = 0;
 				r_core_yank_set_str (core, R_CORE_FOREIGN_ADDR, foo, strlen (foo) + 1);
-				core->num->value = r_num_math (core->num, foo);
+				r_core_return_code (core, r_num_math (core->num, foo));
 				}
 				break;
 			}
@@ -1357,7 +1361,7 @@ static int cmd_help(void *data, const char *input) {
 			return 0;
 		} else if (input[1]) {
 			if (core->num->value) {
-				core->num->value = r_core_cmd (core, input+1, 0);
+				r_core_return_code (core, r_core_cmd (core, input + 1, 0));
 			}
 		} else {
 			if (core->num->dbz) {

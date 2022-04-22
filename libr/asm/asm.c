@@ -397,6 +397,12 @@ R_API bool r_asm_use(RAsm *a, const char *name) {
 			}
 		}
 	}
+	if (a->analb.anal) {
+		if (!a->analb.use (a->analb.anal, name)) {
+			eprintf ("Cannot find arch plugin with this name. See rasm2 -L and rasm2 -LL\n");
+		}
+	}
+	// check if its a valid analysis plugin
 	sdb_free (a->pair);
 	a->pair = NULL;
 	if (strcmp (name, "null")) {
@@ -466,7 +472,7 @@ R_API int r_asm_set_pc(RAsm *a, ut64 pc) {
 	return true;
 }
 
-static bool __isInvalid(RAsmOp *op) {
+static bool is_invalid(RAsmOp *op) {
 	const char *buf_asm = r_strbuf_get (&op->buf_asm);
 	return (buf_asm && *buf_asm && !strcmp (buf_asm, "invalid"));
 }
@@ -524,7 +530,7 @@ R_API int r_asm_disassemble(RAsm *a, RAsmOp *op, const ut8 *buf, int len) {
 		}
 	}
 
-	if (op->size < 1 || __isInvalid (op)) {
+	if (op->size < 1 || is_invalid (op)) {
 		if (a->invhex) {
 			r_strf_buffer (32);
 			if (a->bits == 16) {
@@ -692,7 +698,7 @@ R_API RAsmCode* r_asm_mdisassemble(RAsm *a, const ut8 *buf, int len) {
 	RStrBuf *buf_asm;
 	RAsmCode *acode;
 	ut64 pc = a->pc;
-	RAsmOp op;
+	RAsmOp op = {0};
 	ut64 idx;
 	size_t ret;
 	const size_t addrbytes = a->user? ((RCore *)a->user)->io->addrbytes: 1;
@@ -719,6 +725,7 @@ R_API RAsmCode* r_asm_mdisassemble(RAsm *a, const ut8 *buf, int len) {
 		r_strbuf_append (buf_asm, r_strbuf_get (&op.buf_asm));
 		r_strbuf_append (buf_asm, "\n");
 	}
+	r_asm_op_fini (&op);
 	acode->assembly = r_strbuf_drain (buf_asm);
 	acode->len = idx;
 	return acode;
@@ -1084,6 +1091,9 @@ R_API RAsmCode *r_asm_massemble(RAsm *a, const char *assembly) {
 						continue;
 					}
 					ret = r_asm_assemble (a, &op, ptr_start);
+					// XXX This fixes a leak, unsure
+					// why op_fini below doesn't catch it
+					r_strbuf_fini (&op.buf_asm);
 				}
 			}
 			if (stage == STAGES - 1) {
@@ -1113,10 +1123,12 @@ R_API RAsmCode *r_asm_massemble(RAsm *a, const char *assembly) {
 	}
 	free (lbuf);
 	free (tokens);
+	r_asm_op_fini (&op);
 	return acode;
 fail:
 	free (lbuf);
 	free (tokens);
+	r_asm_op_fini (&op);
 	return r_asm_code_free (acode);
 }
 

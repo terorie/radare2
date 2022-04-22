@@ -111,7 +111,7 @@ static RRBNode *_node_new(void *data, RRBNode *parent) {
 	return node;
 }
 
-#define IS_RED(n) ((n) != NULL && (n)->red == 1)
+#define IS_RED(n) ((n) && (n)->red == 1)
 
 static RRBNode *_rot_once(RRBNode *root, int dir) {
 	r_return_val_if_fail (root, NULL);
@@ -138,9 +138,9 @@ R_API bool r_crbtree_insert(RRBTree *tree, void *data, RRBComparator cmp, void *
 	r_return_val_if_fail (tree && data && cmp, false);
 	bool inserted = false;
 
-	if (tree->root == NULL) {
+	if (!tree->root) {
 		tree->root = _node_new (data, NULL);
-		if (tree->root == NULL) {
+		if (!tree->root) {
 			return false;
 		}
 		inserted = true;

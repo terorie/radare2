@@ -1,10 +1,7 @@
-/* sdb - MIT - Copyright 2013-2018 - pancake */
+/* sdb - MIT - Copyright 2013-2022 - pancake */
 
-#include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <string.h>
-#include <stdlib.h>
 #include <sys/stat.h>
 #include "sdb.h"
 
@@ -36,7 +33,6 @@ static wchar_t *r_utf8_to_utf16_l (const char *cstring, int len) {
 static bool r_sys_mkdir(const char *path) {
 	LPTSTR path_ = r_sys_conv_utf8_to_utf16 (path);
 	bool ret = CreateDirectory (path_, NULL);
-
 	free (path_);
 	return ret;
 }
@@ -53,8 +49,7 @@ static bool r_sys_mkdir(const char *path) {
 #define r_sys_mkdir_failed() (errno != EEXIST)
 #endif
 
-static inline int r_sys_mkdirp(char *dir) {
-	int ret = 1;
+static inline bool mkdirp(char *dir) {
 	const char slash = DIRSEP;
 	char *path = dir;
 	char *ptr = path;
@@ -70,14 +65,14 @@ static inline int r_sys_mkdirp(char *dir) {
 	while ((ptr = strchr (ptr, slash))) {
 		*ptr = 0;
 		if (!r_sys_mkdir (path) && r_sys_mkdir_failed ()) {
-			eprintf ("r_sys_mkdirp: fail '%s' of '%s'\n", path, dir);
+			// eprintf ("cannot make directory r_sys_mkdirp: fail '%s' of '%s'\n", path, dir);
 			*ptr = slash;
-			return 0;
+			return false;
 		}
 		*ptr = slash;
 		ptr++;
 	}
-	return ret;
+	return true;
 }
 
 SDB_API bool sdb_disk_create(Sdb* s) {
@@ -93,12 +88,12 @@ SDB_API bool sdb_disk_create(Sdb* s) {
 	dir = s->dir ? s->dir : "./";
 	R_FREE (s->ndump);
 	nlen = strlen (dir);
-	str = malloc (nlen + 5);
+	str = (char *)malloc (nlen + 5);
 	if (!str) {
 		return false;
 	}
 	memcpy (str, dir, nlen + 1);
-	r_sys_mkdirp (str);
+	mkdirp (str);
 	memcpy (str + nlen, ".tmp", 5);
 	if (s->fdump != -1) {
 		close (s->fdump);
@@ -115,7 +110,7 @@ SDB_API bool sdb_disk_create(Sdb* s) {
 	s->fdump = open (str, O_BINARY | O_RDWR | O_CREAT | O_TRUNC, SDB_MODE);
 #endif
 	if (s->fdump == -1) {
-		eprintf ("sdb: Cannot open '%s' for writing.\n", str);
+		// eprintf ("sdb: Cannot open '%s' for writing.\n", str);
 		free (str);
 		return false;
 	}

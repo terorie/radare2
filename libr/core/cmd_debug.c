@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #include <r_core.h>
 #include <r_debug.h>
@@ -22,93 +22,100 @@ void cmd_anal_reg (RCore *core, const char *str);
 
 static const char *help_msg_d[] = {
 	"Usage:", "d", " # Debug commands",
-	"db", "[?]", "Breakpoints commands",
-	"dbt", "[?]", "Display backtrace based on dbg.btdepth and dbg.btalgo",
-	"dc", "[?]", "Continue execution",
-	"dd", "[?]", "File descriptors (!fd in r1)",
-	"de", "[-sc] [perm] [rm] [e]", "Debug with ESIL (see de?)",
-	"dg", " <file>", "Generate a core-file (WIP)",
-	"dH", " [handler]", "Transplant process to a new handler",
-	"di", "[?]", "Show debugger backend information (See dh)",
-	"dk", "[?]", "List, send, get, set, signal handlers of child",
-	"dL", "[?]", "List or set debugger handler",
-	"dm", "[?]", "Show memory maps",
-	"do", "[?]", "Open process (reload, alias for 'oo')",
-	"doo", "[args]", "Reopen in debug mode with args (alias for 'ood')",
-	"doof", "[file]", "Reopen in debug mode from file (alias for 'oodf')",
-	"doc", "", "Close debug session",
-	"dp", "[?]", "List, attach to process or thread id",
-	"dr", "[?]", "Cpu registers",
-	"ds", "[?]", "Step, over, source line",
-	"dt", "[?]", "Display instruction traces",
-	"dw", " <pid>", "Block prompt until pid dies",
+	"db", "[?]", "breakpoints commands",
+	"dbt", "[?]", "display backtrace based on dbg.btdepth and dbg.btalgo",
+	"dc", "[?]", "continue execution",
+	"dd", "[?][*+-tsdfrw]", "manage file descriptors for child process",
+	"de", "[-sc] [perm] [rm] [e]", "debug with ESIL (see de?)",
+	"dg", " <file>", "generate a core-file (WIP)",
+	"dH", " [handler]", "transplant process to a new handler",
+	"di", "[?]", "show debugger backend information (See dh)",
+	"dk", "[?]", "list, send, get, set, signal handlers of child",
+	"dL", "[?]", "list or set debugger handler",
+	"dm", "[?]", "show memory maps",
+	"do", "[?]", "open process (reload, alias for 'oo')",
+	"doo", "[args]", "reopen in debug mode with args (alias for 'ood')",
+	"doof", "[file]", "reopen in debug mode from file (alias for 'oodf')",
+	"doc", "", "close debug session",
+	"dp", "[?]", "list, attach to process or thread id",
+	"dr", "[?]", "cpu registers",
+	"ds", "[?]", "step, over, source line",
+	"dt", "[?]", "display instruction traces",
+	"dw", " <pid>", "block prompt until pid dies",
 #if __WINDOWS__
-	"dW", "", "List process windows",
-	"dWi", "", "Identify window under cursor",
+	"dW", "", "list process windows",
+	"dWi", "", "identify window under cursor",
 #endif
-	"dx", "[?]", "Inject and run code on target process (See gs)",
+	"dx", "[?][aers]", "execute code in the child process",
 	NULL
 };
 
 static const char *help_msg_db[] = {
 	"Usage: db", "", " # Breakpoints commands",
-	"db", "", "List breakpoints",
-	"db*", "", "List breakpoints in r commands",
-	"db", " sym.main", "Add breakpoint into sym.main",
-	"db", " <addr>", "Add breakpoint",
-	"dbH", " <addr>", "Add hardware breakpoint",
-	"db-", " <addr>", "Remove breakpoint",
-	"db-*", "", "Remove all the breakpoints",
-	"db.", "", "Show breakpoint info in current offset",
-	"dbj", "", "List breakpoints in JSON format",
+	"db", "", "list breakpoints",
+	"db*", "", "list breakpoints in r commands",
+	"db", " sym.main", "add breakpoint into sym.main",
+	"db", " <addr>", "add breakpoint",
+	"dbH", " <addr>", "add hardware breakpoint",
+	"db-", " <addr>", "remove breakpoint",
+	"db-*", "", "remove all the breakpoints",
+	"db.", "", "show breakpoint info in current offset",
+	"dbj", "", "list breakpoints in JSON format",
 	// "dbi", " 0x848 ecx=3", "stop execution when condition matches",
-	"dbc", " <addr> <cmd>", "Run command when breakpoint is hit",
-	"dbC", " <addr> <cmd>", "Run command but continue until <cmd> returns zero",
-	"dbd", " <addr>", "Disable breakpoint",
-	"dbe", " <addr>", "Enable breakpoint",
-	"dbs", " <addr>", "Toggle breakpoint",
-	"dbf", "", "Put a breakpoint into every no-return function",
+	"dbc", " <addr> <cmd>", "run command when breakpoint is hit",
+	"dbC", " <addr> <cmd>", "run command but continue until <cmd> returns zero",
+	"dbd", " <addr>", "disable breakpoint",
+	"dbe", " <addr>", "enable breakpoint",
+	"dbs", " <addr>", "toggle breakpoint",
+	"dbf", "", "put a breakpoint into every no-return function",
 	//
-	"dbm", " <module> <offset>", "Add a breakpoint at an offset from a module's base",
-	"dbn", " [<name>]", "Show or set name for current breakpoint",
+	"dbm", " <module> <offset>", "add a breakpoint at an offset from a module's base",
+	"dbn", " [<name>]", "show or set name for current breakpoint",
 	//
-	"dbi", "", "List breakpoint indexes",
-	"dbi", " <addr>", "Show breakpoint index in givengiven  offset",
-	"dbi.", "", "Show breakpoint index in current offset",
-	"dbi-", " <idx>", "Remove breakpoint by index",
-	"dbix", " <idx> [expr]", "Set expression for bp at given index",
-	"dbic", " <idx> <cmd>", "Run command at breakpoint index",
-	"dbie", " <idx>", "Enable breakpoint by index",
-	"dbid", " <idx>", "Disable breakpoint by index",
-	"dbis", " <idx>", "Swap Nth breakpoint",
-	"dbite", " <idx>", "Enable breakpoint Trace by index",
-	"dbitd", " <idx>", "Disable breakpoint Trace by index",
-	"dbits", " <idx>", "Swap Nth breakpoint trace",
+	"dbi", "", "list breakpoint indexes",
+	"dbi", " <addr>", "show breakpoint index in givengiven  offset",
+	"dbi.", "", "show breakpoint index in current offset",
+	"dbi-", " <idx>", "remove breakpoint by index",
+	"dbix", " <idx> [expr]", "set expression for bp at given index",
+	"dbic", " <idx> <cmd>", "run command at breakpoint index",
+	"dbie", " <idx>", "enable breakpoint by index",
+	"dbid", " <idx>", "disable breakpoint by index",
+	"dbis", " <idx>", "swap Nth breakpoint",
+	"dbite", " <idx>", "enable breakpoint Trace by index",
+	"dbitd", " <idx>", "disable breakpoint Trace by index",
+	"dbits", " <idx>", "swap Nth breakpoint trace",
 	//
-	"dbh", " x86", "Set/list breakpoint plugin handlers",
-	"dbh-", " <name>", "Remove breakpoint plugin handler",
-	"dbt", "[?]", "Show backtrace. See dbt? for more details",
-	"dbx", " [expr]", "Set expression for bp in current offset",
-	"dbw", " <addr> <r/w/rw>", "Add watchpoint",
-#if __WINDOWS__
-	"dbW", " <WM_DEFINE> [?|handle|name]", "Set cond. breakpoint on a window message handler",
+	"dbh", " x86", "set/list breakpoint plugin handlers",
+	"dbh-", " <name>", "remove breakpoint plugin handler",
+	"dbt", "[?]", "show backtrace. See dbt? for more details",
+	"dbx", " [expr]", "set expression for bp in current offset",
+	"dbw", " <addr> <r/w/rw>", "add watchpoint",
+#if __WINDOWs__
+	"dbW", " <WM_DEFINE> [?|handle|name]", "set cond. breakpoint on a window message handler",
 #endif
-	"drx", " number addr len perm", "Modify hardware breakpoint",
-	"drx-", "number", "Clear hardware breakpoint",
+	"drx", " number addr len perm", "modify hardware breakpoint",
+	"drx-", "number", "clear hardware breakpoint",
 	NULL
 };
 
 static const char *help_msg_dbt[] = {
 	"Usage: dbt", "", " # Backtrace commands",
-	"dbt", "", "Display backtrace based on dbg.btdepth and dbg.btalgo",
-	"dbt*", "", "Display backtrace in flags",
-	"dbt=", "", "Display backtrace in one line (see dbt=s and dbt=b for sp or bp)",
-	"dbtv", "", "Display backtrace with local vars if any",
-	"dbtj", "", "Display backtrace in JSON",
-	"dbta", "", "Display ascii-art representation of the stack backtrace",
-	"dbte", " <addr>", "Enable Breakpoint Trace",
-	"dbtd", " <addr>", "Disable Breakpoint Trace",
-	"dbts", " <addr>", "Swap Breakpoint Trace",
+	"dbt", "", "display backtrace based on dbg.btdepth and dbg.btalgo",
+	"dbt*", "", "display backtrace in flags",
+	"dbt=", "", "display backtrace in one line (see dbt=s and dbt=b for sp or bp)",
+	"dbtv", "", "display backtrace with local vars if any",
+	"dbtj", "", "display backtrace in JSON",
+	"dbta", "", "display ascii-art representation of the stack backtrace",
+	"dbte", " <addr>", "enable Breakpoint Trace",
+	"dbtd", " <addr>", "disable Breakpoint Trace",
+	"dbts", " <addr>", "swap Breakpoint Trace",
+	NULL
+};
+
+static const char *help_msg_drr[] = {
+	"Usage: drr", ""," # Show references to registers (see pxr?)",
+	"drr", "", "periscope register values",
+	"drrj", "", "same, but output in JSON",
 	NULL
 };
 
@@ -119,23 +126,23 @@ static const char *help_msg_dbw[] = {
 
 static const char *help_msg_dc[] = {
 	"Usage: dc", "", "Execution continuation commands",
-	"dc", "", "Continue execution of all children",
-	"dc", " <pid>", "Continue execution of pid",
-	"dc", "[-pid]", "Stop execution of pid",
-	"dca", " [sym] [sym].", "Continue at every hit on any given symbol",
-	"dcb", "", "Continue back until breakpoint",
-	"dcc", "", "Continue until call (use step into)",
-	"dccu", "", "Continue until unknown call (call reg)",
+	"dc", "", "continue execution of all children",
+	"dc", " <pid>", "continue execution of pid",
+	"dc", "[-pid]", "stop execution of pid",
+	"dca", " [sym] [sym].", "continue at every hit on any given symbol",
+	"dcb", "", "continue back until breakpoint",
+	"dcc", "", "continue until call (use step into)",
+	"dccu", "", "continue until unknown call (call reg)",
 #if __WINDOWS__
-	"dce", "", "Continue execution (pass exception to program)",
+	"dce", "", "continue execution (pass exception to program)",
 #endif
-	"dcf", "", "Continue until fork (TODO)",
-	"dck", " <signal> <pid>", "Continue sending signal to process",
-	"dcp", "", "Continue until program code (mapped io section)",
-	"dcr", "", "Continue until ret (uses step over)",
-	"dcs", "[?] <num>", "Continue until syscall",
-	"dct", " <len>", "Traptrace from curseek to len, no argument to list",
-	"dcu", "[?] [..end|addr] ([end])", "Continue until address (or range)",
+	"dcf", "", "continue until fork (TODO)",
+	"dck", " <signal> <pid>", "continue sending signal to process",
+	"dcp", "", "continue until program code (mapped io section)",
+	"dcr", "", "continue until ret (uses step over)",
+	"dcs", "[?] <num>", "continue until syscall",
+	"dct", " <len>", "traptrace from curseek to len, no argument to list",
+	"dcu", "[?] [..end|addr] ([end])", "continue until address (or range)",
 	/*"TODO: dcu/dcr needs dbg.untilover=true??",*/
 	/*"TODO: same for only user/libs side, to avoid steping into libs",*/
 	/*"TODO: support for threads?",*/
@@ -144,42 +151,44 @@ static const char *help_msg_dc[] = {
 
 static const char *help_msg_dcs[] = {
 	"Usage:", "dcs", " Continue until syscall",
-	"dcs", "", "Continue until next syscall",
-	"dcs [str]", "", "Continue until next call to the 'str' syscall",
-	"dcs", "*", "Trace all syscalls, a la strace",
+	"dcs", "", "continue until next syscall",
+	"dcs [str]", "", "continue until next call to the 'str' syscall",
+	"dcs", "*", "trace all syscalls, a la strace",
 	NULL
 };
 
 static const char *help_msg_dcu[] = {
 	"Usage:", "dcu", " Continue until address",
-	"dcu.", "", "Alias for dcu $$ (continue until current address",
-	"dcu", " address", "Continue until address",
-	"dcu", " [..tail]", "Continue until the range",
-	"dcu", " [from] [to]", "Continue until the range",
+	"dcu.", "", "alias for dcu $$ (continue until current address)",
+	"dcu", " address", "continue until address",
+	"dcu", " [..tail]", "continue until the range",
+	"dcu", " [from] [to]", "continue until the range",
 	NULL
 };
 
 static const char *help_msg_dd[] = {
-	"Usage: dd", "", "Descriptors commands",
-	"dd", "", "List file descriptors",
-	"dd", " <file>", "Open and map that file into the UI",
-	"dd-", "<fd>", "Close stdout fd",
-	"dd*", "", "List file descriptors (in radare commands)",
-	"dds", " <fd> <off>", "Seek given fd)",
-	"ddd", " <fd1> <fd2>", "Dup2 from fd1 to fd2",
-	"ddr", " <fd> <size>", "Read N bytes from fd",
-	"ddw", " <fd> <hexpairs>", "Write N bytes to fd",
+	"Usage: dd", "", "Manage file descriptors for child process (* to show r2 commands)",
+	"dd", "[*]", "list file descriptors",
+	"dd", "[*] <file|addr>", "open file as read-only (r--); addr = use as char* for path",
+	"dd+", "[*] <file|addr>", "open/create file as read-write (rw-); addr = use as char* for path",
+	"dd-", "[*] <fd>", "close fd",
+	"ddt", "[*]", "close terminal fd (alias for `dd- 0`)",
+	"dds", "[*] <fd> [offset]", "seek fd to offset (no offset = seek to beginning)",
+	"ddd", "[*] <oldfd> <newfd>", "copy oldfd to newfd with dup2",
+	"ddf", "[*] <addr>", "create pipe and write fds to (int[2])addr",
+	"ddr", "[*] <fd> <addr> <size>", "read bytes from fd into (char*)addr",
+	"ddw", "[*] <fd> <addr> <size>", "write bytes from (const char*)addr to fd",
 	NULL
 };
 
 static const char *help_msg_de[] = {
 	"Usage:", "de", "[-sc] [perm] [rm] [expr]",
-	"de", "", "List esil watchpoints",
-	"de-*", "", "Delete all esil watchpoints",
-	"de", " [perm] [rm] [addr|reg|from..to]", "Stop on condition",
-	"dec", "", "Continue execution until matching expression",
-	"des", "[?] [N]", "Step-in N instructions with esildebug",
-	"desu", " [addr]", "Esildebug until specific address",
+	"de", "", "list esil watchpoints",
+	"de-*", "", "delete all esil watchpoints",
+	"de", " [perm] [rm] [addr|reg|from..to]", "stop on condition",
+	"dec", "", "continue execution until matching expression",
+	"des", "[?] [N]", "step-in N instructions with esildebug",
+	"desu", " [addr]", "esildebug until specific address",
 	NULL
 };
 
@@ -192,178 +201,178 @@ static const char *help_msg_des[] = {
 
 static const char *help_msg_di[] = {
 	"Usage: di", "", "Debugger target information",
-	"di", "", "Show debugger target information",
-	"di*", "", "Same as above, but in r2 commands",
-	"dir", "", "Alias for 'ls'",
-	"diq", "", "Same as above, but in one line",
-	"dij", "", "Same as above, but in JSON format",
-	"dif", " [$a] [$b]", "Compare two files (or $alias files)",
+	"di", "", "show debugger target information",
+	"di*", "", "same as above, but in r2 commands",
+	"dir", "", "alias for 'ls'",
+	"diq", "", "same as above, but in one line",
+	"dij", "", "same as above, but in JSON format",
+	"dif", " [$a] [$b]", "compare two files (or $alias files)",
 	NULL
 };
 
 static const char *help_msg_dk[] = {
 	"Usage: dk", "", "Signal commands",
-	"dk", "", "List all signal handlers of child process",
-	"dk", " <signal>", "Send KILL signal to child",
-	"dk", " <signal>=1", "Set signal handler for <signal> in child",
-	"dk?", "<signal>", "Name/signum resolver",
-	"dko", "[?] <signal>", "Reset skip or cont options for given signal",
-	"dko", " <signal> [|skip|cont]", "On signal SKIP handler or CONT into",
-	"dkj", "", "List all signal handlers in JSON",
+	"dk", "", "list all signal handlers of child process",
+	"dk", " <signal>", "send KILL signal to child",
+	"dk", " <signal>=1", "set signal handler for <signal> in child",
+	"dk?", "<signal>", "name/signum resolver",
+	"dko", "[?] <signal>", "reset skip or cont options for given signal",
+	"dko", " <signal> [|skip|cont]", "on signal SKIP handler or CONT into",
+	"dkj", "", "list all signal handlers in JSON",
 	NULL
 };
 
 static const char *help_msg_dko[] = {
 	"Usage:", "dko", " # Signal handling commands",
-	"dko", "", "List existing signal handling",
-	"dko", " [signal]", "Clear handling for a signal",
-	"dko", " [signal] [skip|cont]", "Set handling for a signal",
+	"dko", "", "list existing signal handling",
+	"dko", " [signal]", "clear handling for a signal",
+	"dko", " [signal] [skip|cont]", "set handling for a signal",
 	NULL
 };
 
 static const char *help_msg_dm[] = {
 	"Usage:", "dm", " # Memory maps commands",
-	"dm", "", "List memory maps of target process",
-	"dm", " address size", "Allocate <size> bytes at <address> (anywhere if address is -1) in child process",
-	"dm=", "", "List memory maps of target process (ascii-art bars)",
-	"dm.", "", "Show map name of current address",
-	"dm*", "", "List memmaps in radare commands",
-	"dm-", " address", "Deallocate memory map of <address>",
-	"dmd", "[a] [file]", "Dump current (all) debug map region to a file (from-to.dmp) (see Sd)",
-	"dmh", "[?]", "Show map of heap",
-	"dmi", " [addr|libname] [symname]", "List symbols of target lib",
-	"dmi*", " [addr|libname] [symname]", "List symbols of target lib in radare commands",
-	"dmi.", "", "List closest symbol to the current address",
-	"dmis", " [libname]", "Same as .dmi* - import all symbols from given lib as flags",
-	"dmiv", "", "Show address of given symbol for given lib",
-	"dmj", "", "List memmaps in JSON format",
-	"dml", " <file>", "Load contents of file into the current map region",
-	"dmm", "[?][j*]", "List modules (libraries, binaries loaded in memory)",
-	"dmp", "[?] <address> <size> <perms>", "Change page at <address> with <size>, protection <perms> (perm)",
-	"dms", "[?] <id> <mapaddr>", "Take memory snapshot",
+	"dm", "", "list memory maps of target process",
+	"dm", " address size", "allocate <size> bytes at <address> (anywhere if address is -1) in child process",
+	"dm=", "", "list memory maps of target process (ascii-art bars)",
+	"dm.", "", "show map name of current address",
+	"dm*", "", "list memmaps in radare commands",
+	"dm-", " address", "deallocate memory map of <address>",
+	"dmd", "[a] [file]", "dump current (all) debug map region to a file (from-to.dmp) (see Sd)",
+	"dmh", "[?]", "show map of heap",
+	"dmi", " [addr|libname] [symname]", "list symbols of target lib",
+	"dmi*", " [addr|libname] [symname]", "list symbols of target lib in radare commands",
+	"dmi.", "", "list closest symbol to the current address",
+	"dmis", " [libname]", "same as .dmi* - import all symbols from given lib as flags",
+	"dmiv", "", "show address of given symbol for given lib",
+	"dmj", "", "list memmaps in JSON format",
+	"dml", " <file>", "load contents of file into the current map region",
+	"dmm", "[?][j*]", "list modules (libraries, binaries loaded in memory)",
+	"dmp", "[?] <address> <size> <perms>", "change page at <address> with <size>, protection <perms> (perm)",
+	"dms", "[?] <id> <mapaddr>", "take memory snapshot",
 	"dms-", " <id> <mapaddr>", "Restore memory snapshot",
-	"dmS", " [addr|libname] [sectname]", "List sections of target lib",
-	"dmS*", " [addr|libname] [sectname]", "List sections of target lib in radare commands",
-	"dmL", " address size", "Allocate <size> bytes at <address> and promote to huge page",
+	"dmS", " [addr|libname] [sectname]", "list sections of target lib",
+	"dmS*", " [addr|libname] [sectname]", "list sections of target lib in radare commands",
+	"dmL", " address size", "allocate <size> bytes at <address> and promote to huge page",
 	//"dm, " rw- esp 9K", "set 9KB of the stack as read+write (no exec)",
 	"TODO:", "", "map files in process memory. (dmf file @ [addr])",
 	NULL
 };
 
 static const char *help_msg_dmi[] = {
-	"Usage: dmi", "", " # List/Load Symbols",
-	"dmi", "[j|q|*] [libname] [symname]", "List symbols of target lib",
-	"dmia", "[j|q|*] [libname]", "List all info of target lib",
-	"dmi*", "", "List symbols of target lib in radare commands",
-	"dmi.", "", "List closest symbol to the current address",
-	"dmiv", "", "Show address of given symbol for given lib",
+	"Usage: dmi", "", " # List/load Symbols",
+	"dmi", "[j|q|*] [libname] [symname]", "list symbols of target lib",
+	"dmia", "[j|q|*] [libname]", "list all info of target lib",
+	"dmi*", "", "list symbols of target lib in radare commands",
+	"dmi.", "", "list closest symbol to the current address",
+	"dmiv", "", "show address of given symbol for given lib",
 	NULL
 };
 
 static const char *help_msg_dmm[] = {
 	"Usage:", "dmm", " # Module memory maps commands",
-	"dmm", "", "List modules of target process",
-	"dmm*", "", "List modules of target process (r2 commands)",
-	"dmm.", "", "List memory map of current module",
-	"dmmj", "", "List modules of target process (JSON)",
+	"dmm", "", "list modules of target process",
+	"dmm*", "", "list modules of target process (r2 commands)",
+	"dmm.", "", "list memory map of current module",
+	"dmmj", "", "list modules of target process (JSON)",
 	NULL
 };
 
 static const char *help_msg_dxe[] = {
 	"Usage:", "dxe", " egg-program # see ragg2 and the 'g' command for more details",
-	"dxe", " sym.imp.puts(\"foo\")", "Call puts with a string argument",
+	"dxe", " sym.imp.puts(\"foo\")", "call puts with a string argument",
 	NULL
 };
 
 static const char *help_msg_dmp[] = {
 	"Usage:", "dmp", " Change page permissions",
-	"dmp", " [addr] [size] [perms]", "Change permissions",
-	"dmp", " [perms]", "Change dbg.map permissions",
+	"dmp", " [addr] [size] [perms]", "change permissions",
+	"dmp", " [perms]", "change dbg.map permissions",
 	NULL
 };
 
 static const char *help_msg_do[] = {
 	"Usage:", "do", " # Debug (re)open commands",
-	"do", "", "Open process (reload, alias for 'oo')",
-	"dor", " [rarun2]", "Comma separated list of k=v rarun2 profile options (e dbg.profile)",
-	"doe", "", "Show rarun2 startup profile",
-	"doe!", "", "Edit rarun2 startup profile with $EDITOR",
+	"do", "", "open process (reload, alias for 'oo')",
+	"dor", " [rarun2]", "comma separated list of k=v rarun2 profile options (e dbg.profile)",
+	"doe", "", "show rarun2 startup profile",
+	"doe!", "", "edit rarun2 startup profile with $EDITOR",
 	"doo", " [args]", "Reopen in debug mode with args (alias for 'ood')",
 	"doof", " [args]", "Reopen in debug mode from file (alias for 'oodf')",
-	"doc", "", "Close debug session",
+	"doc", "", "close debug session",
 	NULL
 };
 
 static const char *help_msg_dp[] = {
 	"Usage:", "dp", " # Process commands",
-	"dp", "", "List current pid and children",
-	"dp", " <pid>", "List children of pid",
-	"dpj", " <pid>", "List children of pid in JSON format",
-	"dpl", "", "List all attachable pids",
-	"dplj", "", "List all attachable pids in JSON format",
-	"dp-", " <pid>", "Detach select pid",
-	"dp=", "<pid>", "Select pid",
-	"dpa", " <pid>", "Attach and select pid",
-	"dpc", "", "Select forked pid (see dbg.forks)",
-	"dpc*", "", "Display forked pid (see dbg.forks)",
-	"dpe", "", "Show path to executable",
-	"dpf", "", "Attach to pid like file fd // HACK",
-	"dpk", " <pid> [<signal>]", "Send signal to process (default 0)",
-	"dpn", "", "Create new process (fork)",
-	"dptn", "", "Create new thread (clone)",
-	"dpt", "", "List threads of current pid",
-	"dptj", "", "List threads of current pid in JSON format",
-	"dpt", " <pid>", "List threads of process",
-	"dptj", " <pid>", "List threads of process in JSON format",
-	"dpt=", "<thread>", "Attach to thread",
+	"dp", "", "list current pid and children",
+	"dp", " <pid>", "list children of pid",
+	"dpj", " <pid>", "list children of pid in JSON format",
+	"dpl", "", "list all attachable pids",
+	"dplj", "", "list all attachable pids in JSON format",
+	"dp-", " <pid>", "detach select pid",
+	"dp=", "<pid>", "select pid",
+	"dpa", " <pid>", "attach and select pid",
+	"dpc", "", "select forked pid (see dbg.forks)",
+	"dpc*", "", "display forked pid (see dbg.forks)",
+	"dpe", "", "show path to executable",
+	"dpf", "", "attach to pid like file fd // HACK",
+	"dpk", " <pid> [<signal>]", "send signal to process (default 0)",
+	"dpn", "", "create new process (fork)",
+	"dptn", "", "create new thread (clone)",
+	"dpt", "", "list threads of current pid",
+	"dptj", "", "list threads of current pid in JSON format",
+	"dpt", " <pid>", "list threads of process",
+	"dptj", " <pid>", "list threads of process in JSON format",
+	"dpt=", "<thread>", "attach to thread",
 	NULL
 };
 
 static const char *help_msg_dr[] = {
 	"Usage: dr", "", "Registers commands",
-	"dr", "", "Show 'gpr' registers",
-	"dr", " <register>=<val>", "Set register value",
-	"dr.", " >$snapshot", "Capture current register values in r2 alias file",
-	"dr,", " [table-query]", "Enumerate registers in table format",
-	"dr8", "[1|2|4|8] [type]", "Display hexdump of gpr arena (WIP)",
-	"dr=", "", "Show registers in columns",
-	"dr?", "<register>", "Show value of given register",
-	"dr??", "", "Same as dr?`drp~=[0]+` # list all reg roles alias names and values",
-	"dra", "[?]", "Manage register arenas. see ara?",
-	"drb", "[1|2|4|8] [type]", "Display hexdump of gpr arena (WIP)",
-	"drc", " [name]", "Related to conditional flag registers",
-	"drC", " [register]", "Show register comments",
-	"drd", "", "Show only different registers",
-	"drf", "", "Show fpu registers (80 bit long double)",
-	"dri", "", "Show inverse registers dump (sorted by value)",
-	"drl", "[j]", "List all register names",
-	"drm", "[?]", "Show multimedia packed registers",
+	"dr", "", "show 'gpr' registers",
+	"dr", " <register>=<val>", "set register value",
+	"dr.", " >$snapshot", "capture current register values in r2 alias file",
+	"dr,", " [table-query]", "enumerate registers in table format",
+	"dr8", "[1|2|4|8] [type]", "display hexdump of gpr arena (WIP)",
+	"dr=", "", "show registers in columns",
+	"dr?", "<register>", "show value of given register",
+	"dr??", "", "same as dr?`drp~=[0]+` # list all reg roles alias names and values",
+	"dra", "[?]", "manage register arenas. see ara?",
+	"drb", "[1|2|4|8] [type]", "display hexdump of gpr arena (WIP)",
+	"drc", " [name]", "related to conditional flag registers",
+	"drC", " [register]", "show register comments",
+	"drd", "", "show only different registers",
+	"drf", "", "show fpu registers (80 bit long double)",
+	"dri", "", "show inverse registers dump (sorted by value)",
+	"drl", "[j]", "list all register names",
+	"drm", "[?]", "show multimedia packed registers",
 	//	"drm", " xmm0 0 32 = 12", "Set the first 32 bit word of the xmm0 reg to 12", // Do not advertise - broken
-	"dro", "", "Show previous (old) values of registers",
-	"drp", "[?] ", "Display current register profile",
-	"drr", "", "Show registers references (telescoping)",
-	"drrj", "", "Show registers references (telescoping) in JSON format",
+	"dro", "", "show previous (old) values of registers",
+	"drp", "[?] ", "display current register profile",
+	"drr", "", "show registers references (telescoping)",
+	"drrj", "", "show registers references (telescoping) in JSON format",
 	// TODO: 'drs' to swap register arenas and display old register valuez
-	"drs", "[?]", "Stack register states",
-	"drS", "", "Show the size of the register profile",
-	"drt", "[?]", "Show all register types",
-	"drw"," <hexnum>", "Set contents of the register arena",
-	"drx", "[?]", "Show debug registers",
-	".dr", "*", "Include common register values in flags",
-	".dr", "-", "Unflag all registers",
+	"drs", "[?]", "stack register states",
+	"drS", "", "show the size of the register profile",
+	"drt", "[?]", "show all register types",
+	"drw"," <hexnum>", "set contents of the register arena",
+	"drx", "[?]", "show debug registers",
+	".dr", "*", "include common register values in flags",
+	".dr", "-", "unflag all registers",
 	NULL
 };
 
 static const char *help_msg_drp[] = {
 	"Usage:", "drp", " # Register profile commands",
-	"drp", "", "Show the current register profile",
-	"drp", " [regprofile-file]", "Set the current register profile",
-	"drp", " [gdb] [regprofile-file]", "Parse gdb register profile and dump an r2 profile string",
-	"drpc", "", "Show register profile comments",
-	"drpi", "", "Show internal representation of the register profile",
-	"drp.", "", "Show the current fake size",
-	"drpj", "", "Show the current register profile (JSON)",
-	"drps", " [new fake size]", "Set the fake size",
+	"drp", "", "show the current register profile",
+	"drp", " [regprofile-file]", "set the current register profile",
+	"drp", " [gdb] [regprofile-file]", "parse gdb register profile and dump an r2 profile string",
+	"drpc", "", "show register profile comments",
+	"drpi", "", "show internal representation of the register profile",
+	"drp.", "", "show the current fake size",
+	"drpj", "", "show the current register profile (JSON)",
+	"drps", " [new fake size]", "set the fake size",
 	NULL
 };
 
@@ -377,137 +386,138 @@ static const char *help_msg_drs[] = {
 
 static const char *help_msg_drt[] = {
 	"Usage:", "drt", " [type] [size]    # debug register types",
-	"drt", "", "List all available register types",
-	"drt", " [size]", "Show all regs in the profile of size",
-	"drt", " 16", "Show 16 bit registers",
-	"drt", " [type]", "Show all regs in the profile of this type",
-	"drt", " all", "Show all registers",
-	"drt", " fpu", "Show fpu registers",
-	"drt", " [type] [size]", "Same as above for type and size",
-	"drt", " [type] [size]", "Same as above for type and size",
-	"drt*", "", "List flags in r commands",
+	"drt", "", "list all available register types",
+	"drt", " [size]", "show all regs in the profile of size",
+	"drt", " 16", "show 16 bit registers",
+	"drt", " [type]", "show all regs in the profile of this type",
+	"drt", " all", "show all registers",
+	"drt", " fpu", "show fpu registers",
+	"drt", " [type] [size]", "same as above for type and size",
+	"drt", " [type] [size]", "same as above for type and size",
+	"drt*", "", "list flags in r commands",
 	NULL
 };
 
 static const char *help_msg_drx[] = {
 	"Usage: drx", "", "Hardware breakpoints commands",
-	"drx", "", "List all (x86?) hardware breakpoints",
-	"drx", " <number> <address> <length> <perms>", "Modify hardware breakpoint",
-	"drx-", "<number>", "Clear hardware breakpoint",
+	"drx", "", "list all (x86?) hardware breakpoints",
+	"drx", " <number> <address> <length> <perms>", "modify hardware breakpoint",
+	"drx-", "<number>", "clear hardware breakpoint",
 	NULL
 };
 
 
 static const char *help_msg_drm[] = {
 	"Usage: drm", " [reg] [idx] [wordsize] [= value]", "Show multimedia packed registers",
-	"drm", "", "Show XMM registers",
-	"drm", " xmm0", "Show all packings of xmm0",
-	"drm", " xmm0 0 32 = 12", "Set the first 32 bit word of the xmm0 reg to 12",
-	"drmb", " [reg]", "Show registers as bytes",
-	"drmw", " [reg]", "Show registers as words",
-	"drmd", " [reg]", "Show registers as doublewords",
-	"drmq", " [reg]", "Show registers as quadwords",
-	"drmq", " xmm0~[0]", "Show first quadword of xmm0",
-	"drmf", " [reg]", "Show registers as 32-bit floating point",
-	"drml", " [reg]", "Show registers as 64-bit floating point",
-	"drmyb", " [reg]", "Show YMM registers as bytes",
-	"drmyw", " [reg]", "Show YMM registers as words",
-	"drmyd", " [reg]", "Show YMM registers as doublewords",
-	"drmyq", " [reg]", "Show YMM registers as quadwords",
-	"drmq", " ymm0~[3]", "Show fourth quadword of ymm0",
-	"drmyf", " [reg]", "Show YMM registers as 32-bit floating point",
-	"drmyl", " [reg]", "Show YMM registers as 64-bit floating point",
+	"drm", "", "show XMM registers",
+	"drm", " xmm0", "show all packings of xmm0",
+	"drm", " xmm0 0 32 = 12", "set the first 32 bit word of the xmm0 reg to 12",
+	"drmb", " [reg]", "show registers as bytes",
+	"drmw", " [reg]", "show registers as words",
+	"drmd", " [reg]", "show registers as doublewords",
+	"drmq", " [reg]", "show registers as quadwords",
+	"drmq", " xmm0~[0]", "show first quadword of xmm0",
+	"drmf", " [reg]", "show registers as 32-bit floating point",
+	"drml", " [reg]", "show registers as 64-bit floating point",
+	"drmyb", " [reg]", "show YMM registers as bytes",
+	"drmyw", " [reg]", "show YMM registers as words",
+	"drmyd", " [reg]", "show YMM registers as doublewords",
+	"drmyq", " [reg]", "show YMM registers as quadwords",
+	"drmq", " ymm0~[3]", "show fourth quadword of ymm0",
+	"drmyf", " [reg]", "show YMM registers as 32-bit floating point",
+	"drmyl", " [reg]", "show YMM registers as 64-bit floating point",
 	NULL
 };
 
 static const char *help_msg_ds[] = {
 	"Usage: ds", "", "Step commands",
-	"ds", "", "Step one instruction",
-	"ds", " <num>", "Step <num> instructions",
-	"dsb", "", "Step back one instruction",
-	"dsf", "", "Step until end of frame",
-	"dsi", " <cond>", "Continue until condition matches",
-	"dsl", "", "Step one source line",
-	"dsl", " <num>", "Step <num> source lines",
-	"dso", " <num>", "Step over <num> instructions",
-	"dsp", "", "Step into program (skip libs)",
-	"dss", " <num>", "Skip <num> step instructions",
-	"dsu", "[?] <address>", "Step until <address>. See 'dsu?' for other step until cmds.",
+	"ds", "", "step one instruction",
+	"ds", " <num>", "step <num> instructions",
+	"dsb", "", "step back one instruction",
+	"dsf", "", "step until end of frame",
+	"dsi", " <cond>", "continue until condition matches",
+	"dsl", "", "step one source line",
+	"dsl", " <num>", "step <num> source lines",
+	"dso", " <num>", "step over <num> instructions",
+	"dsp", "", "step into program (skip libs)",
+	"dss", " <num>", "skip <num> step instructions",
+	"dsu", "[?] <address>", "step until <address>. See 'dsu?' for other step until cmds.",
 	NULL
 };
 
 static const char *help_msg_dsu[] = {
 	"Usage: dsu", "", "Step until commands",
-	"dsu", " <address>", "Step until <address>",
-	"dsui", " <instr>", "Step until an instruction disasm matches",
+	"dsu", " <address>", "step until <address>",
+	"dsui", " <instr>", "step until an instruction disasm matches",
 	"dsuir", " <regex>", "like dsui, but using a regexp",
-	"dsuo", " <optype> [<optype> ...]", "Step until an instr matches one of the <optype>s.",
-	"dsue", " <esil>", "Step until <esil> expression matches",
-	"dsuf", " <flag>", "Step until pc == <flag> matching name",
+	"dsuo", " <optype> [<optype> ...]", "step until an instr matches one of the <optype>s.",
+	"dsue", " <esil>", "step until <esil> expression matches",
+	"dsuf", " <flag>", "step until pc == <flag> matching name",
 	NULL
 };
 
 static const char *help_msg_dt[] = {
 	"Usage: dt", "", "Trace commands",
-	"dt", "", "List all traces ",
-	"dt", " [addr]", "Show trace info at address",
+	"dt", "", "list all traces ",
+	"dt", " [addr]", "show trace info at address",
 	"dt%", "", "TODO",
-	"dt*", "", "List all traced opcode offsets",
-	"dt+"," [addr] [times]", "Add trace for address N times",
-	"dt-", "", "Reset traces (instruction/calls)",
-	"dt=", "", "Show ascii-art color bars with the debug trace ranges",
-	"dta", " 0x804020 ...", "Only trace given addresses",
-	"dtc[?][addr]|([from] [to] [addr])", "", "Trace call/ret",
-	"dtd", "[qi] [nth-start]", "List all traced disassembled (quiet, instructions)",
-	"dte", "[?]", "Show esil trace logs",
-	"dtg", "", "Graph call/ret trace",
-	"dtg*", "", "Graph in agn/age commands. use .dtg*;aggi for visual",
-	"dtgi", "", "Interactive debug trace",
-	"dts", "[?]", "Trace sessions",
-	"dtt", " [tag]", "Select trace tag (no arg unsets)",
+	"dt*", "", "list all traced opcode offsets",
+	"dt+"," [addr] [times]", "add trace for address N times",
+	"dt-", "", "reset traces (instruction/calls)",
+	"dt=", "", "show ascii-art color bars with the debug trace ranges",
+	"dta", " 0x804020 ...", "only trace given addresses",
+	"dtc[?][addr]|([from] [to] [addr])", "", "trace call/ret",
+	"dtd", "[qi] [nth-start]", "list all traced disassembled (quiet, instructions)",
+	"dte", "[?]", "show esil trace logs",
+	"dtg", "", "graph call/ret trace",
+	"dtg*", "", "graph in agn/age commands. use .dtg*;aggi for visual",
+	"dtgi", "", "interactive debug trace",
+	"dts", "[?]", "trace sessions",
+	"dtt", " [tag]", "select trace tag (no arg unsets)",
 	NULL
 };
 
 static const char *help_msg_dte[] = {
 	"Usage:", "dte", " Show esil trace logs",
-	"dte", "", "Esil trace log for a single instruction",
-	"dte", " [idx]", "Show commands for that index log",
-	"dte", "-*", "Delete all esil traces",
-	"dtei", "", "Esil trace log single instruction",
-	"dtek", " [sdb query]", "Esil trace log single instruction from sdb",
+	"dte", "", "esil trace log for a single instruction",
+	"dte", " [idx]", "show commands for that index log",
+	"dte", "-*", "delete all esil traces",
+	"dtei", "", "esil trace log single instruction",
+	"dtek", " [sdb query]", "esil trace log single instruction from sdb",
 	NULL
 };
 
 static const char *help_msg_dts[] = {
 	"Usage:", "dts[*]", "",
-	"dts+", "", "Start trace session",
-	"dts-", "", "Stop trace session",
-	"dtst", " [dir] ", "Save trace sessions to disk",
-	"dtsf", " [dir] ", "Read trace sessions from disk",
-	"dtsm", "", "List current memory map and hash",
+	"dts+", "", "start trace session",
+	"dts-", "", "stop trace session",
+	"dtst", " [dir] ", "save trace sessions to disk",
+	"dtsf", " [dir] ", "read trace sessions from disk",
+	"dtsm", "", "list current memory map and hash",
 	NULL
 };
 
 static const char *help_msg_dx[] = {
-	"Usage: dx", "", " # Code injection commands",
-	"dx", " <opcode>...", "Inject opcodes",
-	"dxa", " nop", "Assemble code and inject",
-	"dxc", " addr arg1 arg2 arg3", "Compile egg expression and inject it",
-	"dxe", " egg-expr", "Compile egg expression and inject it",
-	"dxr", " <opcode>...", "Inject opcodes and restore state",
-	"dxs", " write 1, 0x8048, 12", "Syscall injection (see gs)",
+	"Usage: dx", "[aers]", " Debug execution commands",
+	"dx", " <hexpairs>", "execute opcodes",
+	"dxa", " <asm>", "assemble code and execute",
+	"dxe", "[?] <egg-expr>", "compile egg expression and execute it",
+	"dxr", " <hexpairs>", "execute opcodes and restore state",
+	"dxrs", " <hexpairs>", "execute opcodes and restore state, excluding the stack",
+	"dxs", " <name> [args]", "syscall injection (see gs)",
 	"\nExamples:", "", "",
-	"dx", " 9090", "Inject two x86 nop",
-	"\"dxa mov eax,6;mov ebx,0;int 0x80\"", "", "Inject and restore state",
+	"dx", " 9090", "execute two x86 nops",
+	"\"dxa mov eax,6;mov ebx,0;\"", "", "assemble and execute",
+	"dxs", " write 1, 0x8048, 12", "write 12 bytes from 0x8048 into stdout",
 	NULL
 };
 
 static const char *help_msg_dL[] = {
 	"Usage: dL", "", " # List or set debugger handler",
-	"dL", "", "List debugger handlers",
-	"dLq", "", "List debugger handlers in quiet mode",
-	"dLj", "", "List debugger handlers in json mode",
-	"dL", " <handler>", "Set debugger handler",
+	"dL", "", "list debugger handlers",
+	"dLq", "", "list debugger handlers in quiet mode",
+	"dLj", "", "list debugger handlers in json mode",
+	"dL", " <handler>", "set debugger handler",
 	NULL
 };
 
@@ -659,7 +669,7 @@ static void dot_trace_discover_child(RTreeNode *n, RTreeVisitor *vis) {
 static void dot_trace_traverse(RCore *core, RTree *t, int fmt) {
 	const char *gfont = r_config_get (core->config, "graph.font");
 	struct dot_trace_ght aux_data;
-	RTreeVisitor vis = { 0 };
+	RTreeVisitor vis = {0};
 	const RList *nodes;
 	RListIter *iter;
 	RGraphNode *n;
@@ -753,9 +763,9 @@ static int step_until(RCore *core, ut64 addr) {
 }
 
 static int step_until_esil(RCore *core, const char *esilstr) {
-	if (!core || !esilstr || !core->dbg || !core->dbg->anal \
-			|| !core->dbg->anal->esil) {
-		eprintf ("Not initialized %p. Run 'aei' first.\n", core->anal->esil);
+	r_return_val_if_fail (core && core->dbg && core->dbg->anal && esilstr, false);
+	if (!core->dbg->anal->esil) {
+		eprintf ("esil is not initialized. Run 'aei' first.\n");
 		return false;
 	}
 	r_cons_break_push (NULL, NULL);
@@ -840,21 +850,24 @@ static int step_until_inst(RCore *core, const char *instr, bool regex) {
 	return true;
 }
 
-static int step_until_optype(RCore *core, const char *_optypes) {
+static bool step_until_optype(RCore *core, const char *_optypes) {
+	r_return_val_if_fail (core && core->dbg && _optypes, false);
+	RList *optypes_list = NULL;
+	RListIter *iter;
+	char *optype = NULL;
+	char *optypes = strdup (r_str_trim_head_ro ((char *) _optypes));
 	RAnalOp op;
 	ut8 buf[32];
 	ut64 pc;
-	int res = true;
-
-	RList *optypes_list = NULL;
-	RListIter *iter;
-	char *optype, *optypes = strdup (r_str_trim_head_ro ((char *) _optypes));
+	bool res = true;
 
 	if (!core || !core->dbg) {
 		eprintf ("Wrong state\n");
 		res = false;
 		goto end;
 	}
+	st64 maxsteps = r_config_get_i (core->config, "esil.maxsteps");
+	ut64 countsteps = 0;
 	if (!optypes || !*optypes) {
 		eprintf ("Missing optypes. Usage example: 'dsuo ucall ujmp'\n");
 		res = false;
@@ -865,7 +878,7 @@ static int step_until_optype(RCore *core, const char *_optypes) {
 	optypes_list = r_str_split_list (optypes, " ", 0);
 
 	r_cons_break_push (NULL, NULL);
-	for (;;) {
+	for (; !maxsteps || countsteps < maxsteps; countsteps++) {
 		if (r_cons_is_breaked ()) {
 			core->break_loop = true;
 			break;
@@ -891,6 +904,9 @@ static int step_until_optype(RCore *core, const char *_optypes) {
 		} else {
 			r_core_esil_step (core, UT64_MAX, NULL, NULL, false);
 			pc = r_reg_getv (core->anal->reg, "PC");
+			if (pc == UT64_MAX) {
+				break;
+			}
 		}
 		r_io_read_at (core->io, pc, buf, sizeof (buf));
 
@@ -1317,8 +1333,7 @@ show_help:
 			break;
 		case ':':
 		case '*':
-			if (mode == '*' || (mode == ':' && \
-				addr>=map->addr && addr < map->addr_end)) {
+			if (mode == '*' || (mode == ':' && R_BETWEEN (map->addr, addr, map->addr_end))) {
 				/* Escape backslashes (e.g. for Windows). */
 				char *escaped_path = r_str_escape (map->file);
 				char *filtered_name = strdup (map->name);
@@ -1448,7 +1463,7 @@ static bool get_bin_info(RCore *core, const char *file, ut64 baseaddr, PJ *pj, i
 	if ((fd = r_io_fd_open (core->io, file, R_PERM_R, 0)) == -1) {
 		return false;
 	}
-	RBinFileOptions opt = { 0 };
+	RBinFileOptions opt = {0};
 	opt.fd = fd;
 	opt.sz = r_io_fd_size (core->io, fd);
 	opt.baseaddr = baseaddr;
@@ -1766,7 +1781,7 @@ static int cmd_debug_map(RCore *core, const char *input) {
 			r_list_foreach (list, iter, map) {
 				if ((!libname ||
 					 (addr != UT64_MAX && (addr >= map->addr && addr < map->addr_end)) ||
-					 (libname != NULL && (strstr (map->name, libname))))) {
+					 (libname && (strstr (map->name, libname))))) {
 					baddr = map->addr;
 					char *res;
 					const char *file = map->file? map->file: map->name;
@@ -1925,8 +1940,10 @@ R_API void r_core_debug_ri(RCore *core, RReg *reg, int mode) {
 				r_cons_printf (" %s", r);
 			}
 			r_cons_strcat (Color_RESET);
+			ut64 o_offset = core->offset;
 			char *rrstr = r_core_anal_hasrefs (core, *addr, true);
-			if (rrstr && *rrstr && strchr (rrstr, 'R')) {
+			core->offset = o_offset;
+			if (R_STR_ISNOTEMPTY (rrstr) && strchr (rrstr, 'R')) {
 				r_cons_printf ("    ;%s"Color_RESET, rrstr);
 			}
 			r_cons_newline ();
@@ -1951,7 +1968,7 @@ R_API void r_core_debug_rr(RCore *core, RReg *reg, int mode) {
 	RTable *t = r_core_table (core, "regs");
 
 	if (mode == 'j') {
-		r_config_set_i (core->config, "scr.color", false);
+		r_config_set_i (core->config, "scr.color", 0);
 		use_colors = 0;
 	}
 
@@ -1993,12 +2010,14 @@ R_API void r_core_debug_rr(RCore *core, RReg *reg, int mode) {
 		if (delta && use_colors) {
 			namestr = r_str_newf ("%s%s%s", color, r->name, colorend);
 			valuestr = r_str_newf ("%s%"PFMT64x"%s", color, value, colorend);
+			r_cons_strcat (Color_RESET);
 		} else {
 			namestr = r_str_new (r->name);
 			valuestr = r_str_newf ("%"PFMT64x, value);
 		}
-
+		ut64 o_offset = core->offset;
 		char *rrstr = r_core_anal_hasrefs (core, value, true);
+		core->offset = o_offset;
 		if (!rrstr) {
 			rrstr = strdup ("");
 		}
@@ -2071,10 +2090,10 @@ static void cmd_reg_profile(RCore *core, char from, const char *str) { // "arp" 
 			char *r2profile = r_reg_parse_gdb_profile (ptr);
 			if (r2profile) {
 				r_cons_println (r2profile);
-				core->num->value = 0;
+				r_core_return_code (core, R_CMD_RC_SUCCESS);
 				free (r2profile);
 			} else {
-				core->num->value = 1;
+				r_core_return_code (core, R_CMD_RC_FAILURE);
 				eprintf ("Warning: Cannot parse gdb profile.\n");
 			}
 		} else {
@@ -2541,7 +2560,7 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 					RRegFlags* rf = r_reg_cond_retrieve (core->dbg->reg, NULL);
 					if (rf) {
 						int o = r_reg_cond_bits (core->dbg->reg, id, rf);
-						core->num->value = o;
+						r_core_return_code (core, o);
 						// orly?
 						r_cons_printf ("%d\n", o);
 						free (rf);
@@ -2964,6 +2983,9 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 		break;
 	case 'r': // "drr"
 		switch (str[1]) {
+		case '?': // "drr?"
+			r_core_cmd_help (core, help_msg_drr);
+			break;
 		case 'j': // "drrj"
 			r_core_debug_rr (core, core->dbg->reg, 'j');
 			break;
@@ -2989,6 +3011,9 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 					return;
 				}
 				r_debug_reg_list (core->dbg, R_REG_TYPE_GPR, pcbits, pj, 'j', use_color);
+				char *s = pj_drain (pj);
+				r_cons_printf ("%s\n", s);
+				free (s);
 			} else {
 				r_debug_reg_list (core->dbg, R_REG_TYPE_GPR, pcbits, NULL, 0, use_color);
 			}
@@ -3005,7 +3030,7 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 			if (!regname) {
 				regname = string;
 			}
-			r = r_reg_get (core->dbg->reg, regname, -1); //R_REG_TYPE_GPR);
+			r = r_reg_get (core->dbg->reg, regname, -1);
 			if (r) {
 				if (r->flags) {
 					r_cons_printf ("0x%08"PFMT64x" ->",
@@ -3871,7 +3896,7 @@ static void trace_traverse_pre(RTreeNode *n, RTreeVisitor *vis) {
 }
 
 static void trace_traverse(RTree *t) {
-	RTreeVisitor vis = { 0 };
+	RTreeVisitor vis = {0};
 
 	/* clear the line on stderr, because somebody has written there */
 	fprintf (stderr, "\x1b[2K\r");
@@ -4655,7 +4680,7 @@ static int cmd_debug_step(RCore *core, const char *input) {
 		break;
 	case 's': // "dss"
 		{
-			char delb[128] = R_EMPTY;
+			char delb[128] = {0};
 			addr = r_debug_reg_get (core->dbg, "PC");
 			RBreakpointItem *bpi = r_bp_get_at (core->dbg->bp, addr);
 			sprintf(delb, "db 0x%"PFMT64x"", addr);
@@ -4686,7 +4711,7 @@ static int cmd_debug_step(RCore *core, const char *input) {
 			r_core_cmdf (core, "dss%s", input + 2);
 		} else {
 			if (r_config_get_i (core->config, "cfg.debug")) {
-				char delb[128] = R_EMPTY;
+				char delb[128] = {0};
 				addr = r_debug_reg_get (core->dbg, "PC");
 				RBreakpointItem *bpi = r_bp_get_at (core->dbg->bp, addr);
 				sprintf(delb, "db 0x%"PFMT64x"", addr);
@@ -4726,6 +4751,343 @@ static int cmd_debug_step(RCore *core, const char *input) {
 	return 1;
 }
 
+static int run_buffer_dxr(RCore *core, RBuffer *buf, bool print, bool ignore_stack) {
+	ut8 *raw;
+	int raw_len;
+	char *hexpairs;
+	const char *cmd = ignore_stack? "dxrs": "dxr";
+	int ret = 0;
+	r_return_val_if_fail (core && buf, 1);
+
+	r_buf_seek (buf, 0, R_BUF_SET);
+	raw = r_buf_read_all (buf, &raw_len);
+	if (!raw) {
+		return 1;
+	}
+
+	hexpairs = malloc ((raw_len * 2) + 1);
+	if (!hexpairs) {
+		free (raw);
+		return 1;
+	}
+
+	r_hex_bin2str (raw, raw_len, hexpairs);
+	if (print) {
+		r_cons_printf ("%s %s\n", cmd, hexpairs);
+	} else {
+		ret = r_core_cmdf (core, "%s %s", cmd, hexpairs);
+	}
+	free (hexpairs);
+	free (raw);
+
+	return ret;
+}
+
+// TODO: dd commands need tests in archos/linux-x64/cmd_dd
+// TODO: update the book page at src/debugger/files.html
+static int cmd_debug_desc(RCore *core, const char *input) {
+	int argc;
+	char **argv;
+	bool needs_live_process = false;
+	bool print = false; // enabled with *, print the command instead of running it
+	int ret = 0;
+
+	if (input[1] == '?') { // "dd?"
+		r_core_cmd_help (core, help_msg_dd);
+		return 0;
+	}
+
+	if (!strncmp (input, "d*?", 3)) { // "dd*?"
+		r_core_cmd_help_match (core, help_msg_dd, "dd", true);
+		return 0;
+	}
+
+	argv = r_str_argv (input, &argc);
+	if (!argv) {
+		return 1;
+	}
+
+	/* Wait to move the first arg forward past the first 'd' until after argv creation.
+	 * "dd filename" results in {"", "filename"} instead of {"filename"}.
+	 *
+	 * This mimics passing input+1 but allows a possible empty argv[0]
+	 * to preserve argument positions.
+	 * NOTE: we cannot move argv[0] forward, since it needs to be freed
+	 * later, so input borrows instead */
+
+	// Process modifiers
+	for (input = argv[0] + 1; *input; input++) {
+		// Need to know if we're printing help before the cfg.debug check
+		// NB: input[0] will never start at '?', handled above
+		if (*input && input[1] == '?') {
+			if (*input == '*') {
+				/* "ddt*?" -> "ddt?" */
+				input--;
+			}
+			r_core_cmd_help_match_spec (core, help_msg_dd, "dd", input[0], true);
+			goto out_free_argv;
+		}
+
+		if (*input == '*') {
+			print = true;
+		}
+	}
+
+	// See the comment above
+	input = R_BORROW argv[0] + 1;
+
+	// "dd" and "dd*" always need a live process
+	if (!print || !input[0] || (input[0] == '*' && !input[1])) {
+		needs_live_process = true;
+	}
+
+	// Error out if we need a live process and there isn't one
+	if (needs_live_process && !r_config_get_b (core->config, "cfg.debug")) {
+		eprintf ("No child process to manage files for.\n");
+		ret = 1;
+		goto out_free_argv;
+	}
+
+	// All ? help is handled in the modifier check
+	switch (input[0]) {
+	case '\0': // "dd"
+	case '*': // "dd*"
+	case '+': // "dd+"
+	case ' ': { // "dd"
+		RBuffer *buf;
+		char *filename;
+		ut64 addr;
+		int flags;
+
+		if (argc < 2) {
+			// only dd and dd* can have 1 arg here, others should error out
+			if (!input[0] || input[0] == '*') {
+				ret = r_debug_desc_list (core->dbg, print);
+			} else {
+				r_core_cmd_help_match_spec (core, help_msg_dd, "dd", input[0], true);
+			}
+			break;
+		}
+
+		if (input[0] == '+') {
+			flags = O_RDWR | O_CREAT;
+		} else {
+			flags = O_RDONLY;
+		}
+
+		// Filename can be a given string or char* address in memory
+		addr = r_num_math (core->num, argv[1]);
+		if (addr) {
+			filename = r_core_cmd_strf (core, "ps @%" PFMT64x, addr);
+		} else {
+			filename = r_str_escape (argv[1]);
+		}
+
+		if (!(flags & O_CREAT) && !r_file_exists (filename)) {
+			eprintf ("File %s does not exist.\n", filename);
+			free (filename);
+			ret = 1;
+			break;
+		}
+
+		if (print || flags != O_RDONLY || !r_debug_desc_open (core->dbg, filename)) {
+			buf = r_core_syscallf (core, "open",
+					"\"%s\", %d, 0644",
+					filename, flags);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, false);
+			} else {
+				eprintf ("Cannot open\n");
+			}
+		}
+
+		free (filename);
+		break;
+	}
+	case 's': { // "dds"
+		int fd;
+		ut64 offset;
+
+		if (argc < 2) {
+			r_core_cmd_help_match (core, help_msg_dd, "dds", true);
+			break;
+		}
+
+		fd = (int) r_num_math (core->num, argv[1]);
+		if (argc > 2) {
+			offset = r_num_math (core->num, argv[2]);
+		} else {
+			// default to 0 if not given
+			offset = 0;
+		}
+
+		if (print || !r_debug_desc_seek (core->dbg, fd, offset)) {
+			RBuffer *buf = r_core_syscallf (core, "lseek",
+					"%d, 0x%" PFMT64x ", 0",
+					fd, offset);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, true);
+			} else {
+				eprintf ("Cannot seek %d to %" PFMT64x "\n", fd, offset);
+			}
+		}
+		break;
+	}
+	case 'd': { // "ddd"
+		int oldfd;
+		int newfd;
+
+		if (argc < 3) {
+			r_core_cmd_help_match (core, help_msg_dd, "ddd", true);
+			break;
+		}
+
+		oldfd = (int) r_num_math (core->num, argv[1]);
+		newfd = (int) r_num_math (core->num, argv[2]);
+
+		if (print || !r_debug_desc_dup (core->dbg, oldfd, newfd)) {
+			RBuffer *buf = r_core_syscallf (core, "dup2",
+					"%d, %d",
+					oldfd, newfd);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, false);
+			} else {
+				eprintf ("Cannot dup %d -> %d\n", oldfd, newfd);
+			}
+		}
+		break;
+	}
+	case 'r': { // "ddr"
+		int fd;
+		ut64 addr;
+		ut64 count;
+		char *perms;
+
+		if (argc < 4) {
+			r_core_cmd_help_match (core, help_msg_dd, "ddr", true);
+			break;
+		}
+
+		fd = (int) r_num_math (core->num, argv[1]);
+		addr = r_num_math (core->num, argv[2]);
+		count = r_num_math (core->num, argv[3]);
+
+		perms = r_core_cmd_strf (core, "dd~^%d[2]", fd);
+		if (!print && !(r_str_rwx (perms) & 4)) {
+			eprintf ("fd %d is not readable.\n", fd);
+			free (perms);
+			ret = 1;
+			break;
+		}
+		free (perms);
+
+		if (print || !r_debug_desc_read (core->dbg, fd, addr, count)) {
+			RBuffer *buf = r_core_syscallf (core, "read",
+					"%d, 0x%" PFMT64x ", %" PFMT64u,
+					fd, addr, count);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, true);
+			} else {
+				eprintf ("Cannot read %" PFMT64d "bytes from %d into 0x%" PFMT64x "\n",
+						count, fd, addr);
+			}
+		}
+		break;
+	}
+	case 'w': { // "ddw"
+		int fd;
+		ut64 addr;
+		ut64 count;
+		char *perms;
+
+		if (argc < 4) {
+			r_core_cmd_help_match (core, help_msg_dd, "ddw", true);
+			break;
+		}
+
+		fd = (int) r_num_math (core->num, argv[1]);
+		addr = r_num_math (core->num, argv[2]);
+		count = r_num_math (core->num, argv[3]);
+
+		perms = r_core_cmd_strf (core, "dd~^%d[2]", fd);
+		if (!print && !(r_str_rwx (perms) & 2)) {
+			eprintf ("fd %d is not writable.\n", fd);
+			free (perms);
+			ret = 1;
+			break;
+		}
+		free (perms);
+
+		if (print || !r_debug_desc_write (core->dbg, fd, addr, count)) {
+			RBuffer *buf = r_core_syscallf (core, "write",
+					"%d, 0x%" PFMT64x ", %" PFMT64d,
+					fd, addr, count);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, true);
+			} else {
+				eprintf ("Cannot write %" PFMT64d "bytes into %d from 0x%" PFMT64x "\n",
+						count, fd, addr);
+			}
+		}
+		break;
+	}
+	case 't': // "ddt"
+	case '-': { // "dd-"
+		int fd;
+
+		if (input[0] == 't') {
+			fd = 0;
+		} else {
+			if (argc < 2) {
+				r_core_cmd_help_match (core, help_msg_dd, "dd-", true);
+				break;
+			}
+			fd = (int) r_num_math (core->num, argv[1]);
+		}
+
+		if (print || !r_debug_desc_close (core->dbg, fd)) {
+			RBuffer *buf = r_core_syscallf (core, "close", "%d", fd);
+			if (buf) {
+				ret = run_buffer_dxr (core, buf, print, false);
+			} else {
+				eprintf ("Cannot close %d\n", fd);
+			}
+		}
+		break;
+	}
+	case 'f': { // "ddf"
+		RBuffer *buf;
+		ut64 addr;
+
+		if (argc < 2) {
+			r_core_cmd_help_match (core, help_msg_dd, "ddf", true);
+			break;
+		}
+
+		addr = r_num_math (core->num, argv[1]);
+		if (!addr) {
+			eprintf ("%s is not a valid address.\n", argv[1]);
+			break;
+		}
+
+		buf = r_core_syscallf (core, "pipe", "0x%" PFMT64x, addr);
+		if (buf) {
+			ret = run_buffer_dxr (core, buf, print, true);
+		} else {
+			eprintf ("Cannot open pipe and write fd to %" PFMT64x ".\n", addr);
+		}
+		break;
+	}
+	default:
+		r_core_cmd_help (core, help_msg_dd);
+		break;
+	}
+
+out_free_argv:
+	r_str_argv_free (argv);
+	return ret;
+}
+
 static ut8 *getFileData(RCore *core, const char *arg, int *sz) {
 	ut8 *out = NULL;
 	int size = 0;
@@ -4755,24 +5117,6 @@ static ut8 *getFileData(RCore *core, const char *arg, int *sz) {
 	return out;
 }
 
-static void consumeBuffer(RBuffer *buf, const char *cmd, const char *errmsg) {
-	if (!buf) {
-		if (errmsg) {
-			r_cons_printf ("%s\n", errmsg);
-		}
-		return;
-	}
-	if (cmd) {
-		r_cons_printf ("%s", cmd);
-	}
-	int i;
-	r_buf_seek (buf, 0, R_BUF_SET);
-	for (i = 0; i < r_buf_size (buf); i++) {
-		r_cons_printf ("%02x", r_buf_read8 (buf));
-	}
-	r_cons_printf ("\n");
-}
-
 static int cmd_debug(void *data, const char *input) {
 	RCore *core = (RCore *)data;
 	RDebugTracepoint *t;
@@ -4785,6 +5129,8 @@ static int cmd_debug(void *data, const char *input) {
 	RDebugPid *p;
 	RDebugTracepoint *trace;
 	RAnalOp *op;
+	int ret = 0;
+	ut64 old_seek = core->offset;
 
 	if (r_sandbox_enable (0)) {
 		eprintf ("Debugger commands disabled in sandbox mode\n");
@@ -5034,110 +5380,18 @@ static int cmd_debug(void *data, const char *input) {
 			break;
 		}
 		break;
-	case 'd': // "ddd"
-		switch (input[1]) {
-		case '\0': // "ddd"
-			r_debug_desc_list (core->dbg, 0);
-			break;
-		case '*': // "dtd*"
-			r_debug_desc_list (core->dbg, 1);
-			break;
-		case 's': // "dtds"
-			{
-				ut64 off = UT64_MAX;
-				int fd = atoi (input + 2);
-				char *str = strchr (input + 2, ' ');
-				if (str) off = r_num_math (core->num, str+1);
-				if (off == UT64_MAX || !r_debug_desc_seek (core->dbg, fd, off)) {
-					RBuffer *buf = r_core_syscallf (core, "lseek", "%d, 0x%"PFMT64x", %d", fd, off, 0);
-					consumeBuffer (buf, "dx ", "Cannot seek");
-				}
-			}
-			break;
-		case 't': // "ddt" <ttypath>
-			r_core_cmdf (core, "dd-0");
-			break;
-		case 'd': // "ddd"
-			{
-				ut64 newfd = UT64_MAX;
-				int fd = atoi (input + 2);
-				char *str = strchr (input + 3, ' ');
-				if (str) newfd = r_num_math (core->num, str+1);
-				if (newfd == UT64_MAX || !r_debug_desc_dup (core->dbg, fd, newfd)) {
-					RBuffer *buf = r_core_syscallf (core, "dup2", "%d, %d", fd, (int)newfd);
-					if (buf) {
-						consumeBuffer (buf, "dx ", NULL);
-					} else {
-						eprintf ("Cannot dup %d %d\n", fd, (int)newfd);
-					}
-				}
-			}
-			break;
-		case 'r':
-			{
-				ut64 off = UT64_MAX;
-				ut64 len = UT64_MAX;
-				int fd = atoi (input + 2);
-				char *str = strchr (input + 2, ' ');
-				if (str) off = r_num_math (core->num, str+1);
-				if (str) str = strchr (str+1, ' ');
-				if (str) len = r_num_math (core->num, str+1);
-				if (len == UT64_MAX || off == UT64_MAX || \
-						!r_debug_desc_read (core->dbg, fd, off, len)) {
-					consumeBuffer (r_core_syscallf (core, "read", "%d, 0x%"PFMT64x", %d",
-								fd, off, (int)len), "dx ", "Cannot read");
-				}
-			}
-			break;
-		case 'w':
-			{
-				ut64 off = UT64_MAX;
-				ut64 len = UT64_MAX;
-				int fd = atoi (input + 2);
-				char *str = strchr (input + 2, ' ');
-				if (str) off = r_num_math (core->num, str+1);
-				if (str) str = strchr (str+1, ' ');
-				if (str) len = r_num_math (core->num, str+1);
-				if (len == UT64_MAX || off == UT64_MAX || \
-						!r_debug_desc_write (core->dbg, fd, off, len)) {
-					RBuffer *buf = r_core_syscallf (core, "write", "%d, 0x%"PFMT64x", %d", fd, off, (int)len);
-					consumeBuffer (buf, "dx ", "Cannot write");
-				}
-			}
-			break;
-		case '-': // "dd-"
-			// close file
-			//r_core_syscallf (core, "close", "%d", atoi (input + 2));
-			{
-				int fd = atoi (input + 2);
-				//r_core_cmdf (core, "dxs close %d", (int)r_num_math ( core->num, input + 2));
-				RBuffer *buf = r_core_syscallf (core, "close", "%d", fd);
-				consumeBuffer (buf, "dx ", "Cannot close");
-			}
-			break;
-		case ' ': // "dd"
-			// TODO: handle read, readwrite, append
-			{
-				RBuffer *buf = r_core_syscallf (core, "open", "%s, %d, %d", input + 2, 2, 0644);
-				consumeBuffer (buf, "dx ", "Cannot open");
-			}
-			// open file
-			break;
-		case '?':
-		default:
-			r_core_cmd_help (core, help_msg_dd);
-			break;
-		}
+	case 'd': // "dd"
+		ret = cmd_debug_desc (core, input);
 		break;
-	case 's':
+	case 's': // "ds"
 		if (cmd_debug_step (core, input)) {
 			follow = r_config_get_i (core->config, "dbg.follow");
 		}
 		break;
-	case 'b':
+	case 'b': // "db"
 		r_core_cmd_bp (core, input);
 		break;
-	case 'H':
+	case 'H': // "dH"
 		eprintf ("TODO: transplant process\n");
 		break;
 	case 'c': // "dc"
@@ -5412,7 +5666,7 @@ static int cmd_debug(void *data, const char *input) {
 			}
 			break;
 		case 'c': // "doc" : close current debug session
-			if (!core || !core->io || !core->io->desc || !r_config_get_i (core->config, "cfg.debug")) {
+			if (!core->io->desc || !r_config_get_b (core->config, "cfg.debug")) {
 				eprintf ("No open debug session\n");
 				break;
 			}
@@ -5469,34 +5723,63 @@ static int cmd_debug(void *data, const char *input) {
 		break;
 	case 'x': // "dx"
 		switch (input[1]) {
+		case 'r':   // "dxr"
+			if (input[2] == 's') { // "dxrs"
+				if (input[3] != ' ') {
+					r_core_cmd_help_match (core, help_msg_dx, "dxrs", true);
+					break;
+				}
+			} else if (input[2] != ' ') {
+				r_core_cmd_help_match (core, help_msg_dx, "dxr", true);
+				break;
+			}
+			/* fall through */
 		case ' ': { // "dx "
 			ut8 bytes[4096];
-			if (strlen (input + 2) < 4096){
-				int bytes_len = r_hex_str2bin (input + 2, bytes);
+			const bool is_dxr = input[1] == 'r';
+			const bool is_dxrs = is_dxr && input[2] == 's';
+			const char *hexpairs = input + 2;
+			if (is_dxr) {
+				hexpairs++;
+				if (is_dxrs) {
+					hexpairs++;
+				}
+			}
+
+			if (strlen (hexpairs) < 8192) {
+				int bytes_len = r_hex_str2bin (hexpairs, bytes);
 				if (bytes_len > 0) {
-					r_debug_execute (core->dbg, bytes, bytes_len, 0);
+					if (!r_debug_execute (core->dbg, bytes, bytes_len, NULL, is_dxr, is_dxrs)) {
+						eprintf ("Failed to execute code.\n");
+					}
 				} else {
-					eprintf ("Invalid hexpairs\n");
+					eprintf ("Failed to parse hex pairs.\n");
 				}
 			} else {
-				eprintf ("Injection opcodes so long\n");
+				eprintf ("Cannot inject more than 4096 bytes at once.\n");
 			}
 			break;
 		}
 		case 'a': { // "dxa"
 			RAsmCode *acode;
+			if (input[2] == '?' || input[2] != ' ') {
+				r_core_cmd_help_match (core, help_msg_dx, "dxa", true);
+				break;
+			}
 			r_asm_set_pc (core->rasm, core->offset);
 			acode = r_asm_massemble (core->rasm, input + 2);
 			if (acode) {
 				r_reg_arena_push (core->dbg->reg);
-				r_debug_execute (core->dbg, acode->bytes, acode->len, 0);
+				if (!r_debug_execute (core->dbg, acode->bytes, acode->len, NULL, false, false)) {
+					eprintf ("Failed to inject code.\n");
+				}
 				r_reg_arena_pop (core->dbg->reg);
 			}
 			r_asm_code_free (acode);
 			break;
 		}
-		case 'e':
-			if (input[2] == '?') {
+		case 'e': // "dxe"
+			if (input[2] == '?' || input[2] != ' ') {
 				r_core_cmd_help (core, help_msg_dxe);
 			} else { // "dxe"
 				const char *program = r_str_trim_head_ro (input + 2);
@@ -5516,30 +5799,14 @@ static int cmd_debug(void *data, const char *input) {
 				ut64 tmpsz;
 				const ut8 *tmp = r_buf_data (b, &tmpsz);
 				if (tmpsz > 0) {
-					r_debug_execute (core->dbg, tmp, tmpsz, 0);
+					if (!r_debug_execute (core->dbg, tmp, tmpsz, NULL, false, false)) {
+						eprintf ("Failed to inject code.\n");
+					}
 				} else {
 					eprintf ("No egg program compiled to execute.\n");
 				}
 				r_reg_arena_pop (core->dbg->reg);
 			}
-			break;
-		case 'r': // "dxr"
-			r_reg_arena_push (core->dbg->reg);
-			if (input[2] == ' ') {
-				ut8 bytes[4096];
-				if (strlen (input + 2) < 4096){
-					int bytes_len = r_hex_str2bin (input + 2,
-							bytes);
-					if (bytes_len > 0) {
-						r_debug_execute (core->dbg,
-								bytes, bytes_len,
-								0);
-					} else {
-						eprintf ("Invalid hexpairs\n");
-					}
-				} else eprintf ("Injection opcodes so long\n");
-			}
-			r_reg_arena_pop (core->dbg->reg);
 			break;
 		case 's': // "dxs"
 			if (input[2]) {
@@ -5566,11 +5833,21 @@ static int cmd_debug(void *data, const char *input) {
 		r_core_cmd_help (core, help_msg_d);
 		break;
 	}
+
+	/* RDebug, specifically RDebug.execute() may incorrectly
+	 * advance seek, so we force it back here before processing
+	 * dbg.follow. */
+	if (core->offset != old_seek) {
+		r_core_seek (core, old_seek, false);
+	}
+
 	if (follow > 0) {
 		ut64 pc = r_debug_reg_get (core->dbg, "PC");
-		if ((pc < core->offset) || (pc > (core->offset + follow))) {
+		// Is PC before offset or after the follow cutoff?
+		if (!R_BETWEEN (core->offset, pc, core->offset + follow)) {
 			r_core_cmd0 (core, "sr PC");
 		}
 	}
-	return 0;
+
+	return ret;
 }

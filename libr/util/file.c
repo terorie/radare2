@@ -1,4 +1,6 @@
-/* radare - LGPL - Copyright 2007-2021 - pancake */
+/* radare - LGPL - Copyright 2007-2022 - pancake */
+
+#define R_LOG_ORIGIN "filter"
 
 #include "r_types.h"
 #include "r_util.h"
@@ -43,9 +45,9 @@ static int file_stat(const char *file, struct stat* const pStat) {
 	int ret = _wstat (wfile, pStat);
 	free (wfile);
 	return ret;
-#else // __WINDOWS__
+#else
 	return stat (file, pStat);
-#endif // __WINDOWS__
+#endif
 }
 
 // r_file_new("", "bin", NULL) -> /bin
@@ -195,14 +197,20 @@ R_API bool r_file_fexists(const char *fmt, ...) {
 }
 
 R_API bool r_file_exists(const char *str) {
-	char *absfile = r_file_abspath (str);
 	struct stat buf = {0};
+#if 1
+	if (file_stat (str, &buf) == -1) {
+		return false;
+	}
+#else
+	char *absfile = r_file_abspath (str);
 	r_return_val_if_fail (!R_STR_ISEMPTY (str), false);
 	if (file_stat (absfile, &buf) == -1) {
 		free (absfile);
 		return false;
 	}
 	free (absfile);
+#endif
 	return S_IFREG == (S_IFREG & buf.st_mode);
 }
 
@@ -430,6 +438,7 @@ R_API char *r_file_slurp(const char *str, R_NULLABLE size_t *usz) {
 			char *nbuf = realloc (buf, size + 1);
 			if (!nbuf) {
 				free (buf);
+				fclose (fd);
 				return NULL;
 			}
 			buf = nbuf;
@@ -655,7 +664,7 @@ R_API char *r_file_slurp_lines_from_bottom(const char *file, int line) {
 			}
 		}
 		if (line > lines) {
-			return strdup (str);	// number of lines requested in more than present, return all
+			return str;	// number of lines requested in more than present, return all
 		}
 		i--;
 		for (; str[i] && line; i--) {
@@ -663,7 +672,7 @@ R_API char *r_file_slurp_lines_from_bottom(const char *file, int line) {
 				line--;
 			}
 		}
-		ptr = str+i;
+		ptr = str + i;
 		ptr = strdup (ptr);
 		free (str);
 	}
@@ -900,7 +909,7 @@ err_r_file_mmap_write:
 		CloseHandle (fh);
 	}
 	return ret;
-#elif __wasi__
+#elif __wasi__ || EMSCRIPTEN
 	return -1;
 #elif __UNIX__
 	int fd = r_sandbox_open (file, RDWR_FLAGS, 0644);
@@ -965,7 +974,7 @@ err_r_file_mmap_read:
 	}
 	free (file_);
 	return ret;
-#elif __wasi__
+#elif __wasi__ || EMSCRIPTEN
 	return 0;
 #elif __UNIX__
 	int fd = r_sandbox_open (file, O_RDONLY, 0644);
@@ -989,7 +998,7 @@ err_r_file_mmap_read:
 #endif
 }
 
-#if __wasi__
+#if __wasi__ || EMSCRIPTEN
 static RMmap *r_file_mmap_unix(RMmap *m, int fd) {
 	return NULL;
 }
@@ -1295,6 +1304,7 @@ R_API char *r_file_tmpdir(void) {
 R_API bool r_file_copy(const char *src, const char *dst) {
 	r_return_val_if_fail (R_STR_ISNOTEMPTY (src) && R_STR_ISNOTEMPTY (dst), false);
 	if (!strcmp (src, dst)) {
+		eprintf ("Cannot copy file '%s' to itself.\n", src);
 		return false;
 	}
 	/* TODO: implement in C */
@@ -1327,7 +1337,7 @@ R_API bool r_file_copy(const char *src, const char *dst) {
 }
 
 static bool dir_recursive(RList *dst, const char *dir) {
-	char *name;
+	char *name, *path = NULL;
 	RListIter *iter;
 	bool ret = true;
 	RList *files = r_sys_dir (dir);
@@ -1335,7 +1345,6 @@ static bool dir_recursive(RList *dst, const char *dir) {
 		return false;
 	}
 	r_list_foreach (files, iter, name) {
-		char *path;
 		if (!strcmp (name, "..") || !strcmp (name, ".")) {
 			continue;
 		}
@@ -1344,9 +1353,8 @@ static bool dir_recursive(RList *dst, const char *dir) {
 			ret = false;
 			break;
 		}
-		if (!r_list_append (dst, path)) {
+		if (!r_list_append (dst, strdup (path))) {
 			ret = false;
-			free (path);
 			break;
 		}
 		if (r_file_is_directory (path)) {
@@ -1355,13 +1363,15 @@ static bool dir_recursive(RList *dst, const char *dir) {
 				break;
 			}
 		}
+		R_FREE (path);
 	}
+	free (path);
 	r_list_free (files);
 	return ret;
 }
 
 R_API RList *r_file_lsrf(const char *dir) {
-	RList *ret = r_list_new ();
+	RList *ret = r_list_newf (free);
 	if (!ret) {
 		return NULL;
 	}
@@ -1401,7 +1411,7 @@ static void recursive_glob(const char *path, const char *glob, RList* list, int 
 		if (!strcmp (file, ".") || !strcmp (file, "..")) {
 			continue;
 		}
-		char *filename = r_str_newf ("%s%s", path, file);
+		char *filename = r_file_new (path, file, NULL);
 		if (r_file_is_directory (filename)) {
 			recursive_glob (filename, glob, list, depth - 1);
 			free (filename);

@@ -26,7 +26,7 @@ static bool is_simple_type(int idx) {
  *  and splitting it on 2 parts, 1 mode, 1 type
  */
 static STypeInfo parse_simple_type(ut32 idx) {
-	STypeInfo type = { 0 };
+	STypeInfo type = {0};
 	SLF_SIMPLE_TYPE *simple_type = R_NEW0 (SLF_SIMPLE_TYPE);
 	if (!simple_type) {
 		return type;
@@ -2032,7 +2032,7 @@ static void get_nesttype_print_type(void *type, char **name) {
 		tmp_name = base_type->type;
 	} else {
 		ti = &t->type_data;
-		if (ti->get_print_type != NULL) {
+		if (ti->get_print_type) {
 			ti->get_print_type (ti, &tmp_name);
 		} else {
 			// TODO: need to investigate why this branch can be...

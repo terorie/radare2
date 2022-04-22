@@ -1,8 +1,6 @@
-/* sdb - MIT - Copyright 2011-2021 - pancake */
+/* sdb - MIT - Copyright 2011-2022 - pancake */
 
 #include <signal.h>
-#include <stdio.h>
-#include <string.h>
 #include <fcntl.h>
 #ifndef HAVE_SYSTEM
 #define HAVE_SYSTEM 1
@@ -61,8 +59,10 @@ static void terminate(int sig UNUSED) {
 	exit (sig < 2? sig: 0);
 }
 
-static void write_null(void) {
-	(void)write (1, "", 1);
+static int write_null(void) {
+	// success = write returns 1 == 1 -> 0
+	// failure = write returns 0 != 1 -> 1
+	return write (1, "", 1) != 1;
 }
 
 #define BS 128
@@ -84,7 +84,7 @@ static char *slurp(FILE *f, size_t *sz) {
 		/* run test/add10k.sh script to benchmark */
 		const int buf_size = 96096;
 
-		buf = calloc (1, buf_size);
+		buf = (char *)calloc (1, buf_size);
 		if (!buf) {
 			return NULL;
 		}
@@ -103,7 +103,7 @@ static char *slurp(FILE *f, size_t *sz) {
 			buf[buf_len - 1] = '\0';
 		}
 
-		char *newbuf = realloc (buf, buf_len + 1);
+		char *newbuf = (char *)realloc (buf, buf_len + 1);
 		// realloc behaves like free if buf_len is 0
 		if (!newbuf) {
 			return buf;
@@ -111,7 +111,7 @@ static char *slurp(FILE *f, size_t *sz) {
 		return newbuf;
 	}
 #endif
-	buf = calloc (BS + 1, 1);
+	buf = (char *)calloc (BS + 1, 1);
 	if (!buf) {
 		return NULL;
 	}
@@ -149,7 +149,7 @@ static char *slurp(FILE *f, size_t *sz) {
 				int nlen = nl - buf;
 				nextlen = len - nlen;
 				if (nextlen > 0) {
-					next = malloc (nextlen + blocksize + 1);
+					next = (char *)malloc (nextlen + blocksize + 1);
 					if (!next) {
 						eprintf ("Cannot malloc %d\n", nextlen);
 						break;
@@ -169,7 +169,7 @@ static char *slurp(FILE *f, size_t *sz) {
 		}
 #endif
 		bufsize += blocksize;
-		tmp = realloc (buf, bufsize + 1);
+		tmp = (char *)realloc (buf, bufsize + 1);
 		if (!tmp) {
 			bufsize -= blocksize;
 			break;
@@ -239,7 +239,7 @@ static char* get_cname(const char*name) {
 	}
 	char *n = strdup (name);
 	char *v, *d = n;
-	for (v=(char*)n; *v; v++) {
+	for (v = (char*)n; *v; v++) {
 		if (*v == '/' || *v == '-') {
 			*d++ = '_';
 			continue;
@@ -254,7 +254,7 @@ static char* get_cname(const char*name) {
 }
 
 static char *escape(const char *b, int ch) {
-	char *a = calloc ((1 + strlen (b)), 4);
+	char *a = (char *)calloc ((1 + strlen (b)), 4);
 	char *c = a;
 	while (*b) {
 		if (*b == ch) {
@@ -293,7 +293,7 @@ static void sdb_dump_cb(MainOptions *mo, const char *k, const char *v, const cha
 		if (!strcmp (v, "true") || !strcmp (v, "false")) {
 			printf ("%s\"%s\":%s", comma, k, v);
 		} else if (sdb_isnum (v)) {
-			printf ("%s\"%s\":%"ULLFMT"u", comma, k, sdb_atoi (v));
+			printf ("%s\"%s\":%" PRIu64, comma, k, sdb_atoi (v));
 		} else if (*v == '{' || *v == '[') {
 			printf ("%s\"%s\":%s", comma, k, v);
 		} else {
@@ -325,7 +325,7 @@ static void sdb_dump_cb(MainOptions *mo, const char *k, const char *v, const cha
 
 static void cgen_header(MainOptions *mo, const char *cname) {
 	if (mo->textmode) {
-		printf ("// SDB-CGEN V"SDB_VERSION"\n");
+		printf ("// SDB-CGEN V" SDB_VERSION "\n");
 		printf ("// gcc -DMAIN=1 %s.c ; ./a.out > %s.h\n", cname, cname);
 		printf ("#include <ctype.h>\n");
 		printf ("#include <stdio.h>\n");
@@ -391,7 +391,7 @@ static void cgen_footer(MainOptions *mo, const char *name, const char *cname) {
 		return;
 	}
 	printf ("%%%%\n");
-	printf ("// SDB-CGEN V"SDB_VERSION"\n");
+	printf ("// SDB-CGEN V" SDB_VERSION "\n");
 	printf ("// %p\n", cname);
 	printf ("typedef int (*GperfForeachCallback)(void *user, const char *k, const char *v);\n");
 	printf ("int gperf_%s_foreach(GperfForeachCallback cb, void *user) {\n", cname);
@@ -480,6 +480,7 @@ static int sdb_dump(MainOptions *mo) {
 		break;
 	}
 
+	int ret = 0;
 	if (db->fd == -1) {
 		SdbList *l = sdb_foreach_list (db, true);
 		if (!mo->textmode && mo->format == cgen && ls_length (l) > SDB_MAX_GPERF_KEYS) {
@@ -491,7 +492,7 @@ static int sdb_dump(MainOptions *mo) {
 		}
 		SdbKv *kv;
 		SdbListIter *it;
-		ls_foreach (l, it, kv) {
+		ls_foreach_cast (l, it, SdbKv*, kv) {
 			const char *k = sdbkv_key (kv);
 			const char *v = sdbkv_value (kv);
 			if (v && *v && grep && !strstr (k, expgrep) && !strstr (v, expgrep)) {
@@ -513,31 +514,31 @@ static int sdb_dump(MainOptions *mo) {
 			free (v);
 			if (!mo->textmode && mo->format == cgen && count++ > SDB_MAX_GPERF_KEYS) {
 				eprintf ("Error: gperf doesn't work with datasets with more than 15.000 keys.\n");
-				free (name);
-				free (cname);
-				return -1;
+				ret = -1;
 			}
 		}
 	}
-	switch (mo->format) {
-	case zero:
-		fflush (stdout);
-		write_null ();
-		break;
-	case perf:
-	case cgen:
-		cgen_footer (mo, name, cname);
-		break;
-	case json:
-		printf ("}\n");
-		break;
-	default:
-		break;
+	if (ret == 0) {
+		switch (mo->format) {
+		case zero:
+			fflush (stdout);
+			ret = write_null ();
+			break;
+		case perf:
+		case cgen:
+			cgen_footer (mo, name, cname);
+			break;
+		case json:
+			printf ("}\n");
+			break;
+		default:
+			break;
+		}
 	}
 	sdb_free (db);
 	free (cname);
 	free (name);
-	return 0;
+	return ret;
 }
 
 static int insertkeys(Sdb *s, const char **args, int nargs, int mode) {
@@ -620,7 +621,7 @@ static int showusage(int o) {
 }
 
 static int showversion(void) {
-	printf ("sdb "SDB_VERSION "\n");
+	printf ("sdb " SDB_VERSION "\n");
 	fflush (stdout);
 	return 0;
 }
@@ -669,8 +670,7 @@ static int base64decode(void) {
 		int declen;
 		out = sdb_decode (in, &declen);
 		if (out && declen >= 0) {
-			(void)write (1, out, declen);
-			ret = 0;
+			ret = (write (1, out, declen) == declen)? 0: 1;
 		}
 		free (out);
 		free (in);
@@ -687,7 +687,7 @@ static void dbdiff_cb(const SdbDiff *diff, void *user) {
 	char *buf = sbuf;
 	char *hbuf = NULL;
 	if ((size_t)r >= sizeof (sbuf)) {
-		hbuf = malloc (r + 1);
+		hbuf = (char *)malloc (r + 1);
 		if (!hbuf) {
 			return;
 		}
@@ -741,12 +741,12 @@ static int sdb_system(const char *cmd) {
 
 static int gen_gperf(MainOptions *mo, const char *file, const char *name) {
 	const size_t buf_size = 4096;
-	char *buf = malloc (buf_size);
+	char *buf = (char *)malloc (buf_size);
 	if (!buf) {
 		return -1;
 	}
 	size_t out_size = strlen (file) + 32;
-	char *out = malloc (out_size);
+	char *out = (char *)malloc (out_size);
 	if (!out) {
 		free (buf);
 		return -1;
@@ -760,11 +760,16 @@ static int gen_gperf(MainOptions *mo, const char *file, const char *name) {
 	if (wd == -1) {
 		wd = open (out, O_RDWR | O_CREAT, 0644);
 	} else {
-		ftruncate (wd, 0);
+		if (ftruncate (wd, 0) == -1) {
+			free (out);
+			free (buf);
+			close (wd);
+			return -1;
+		}
 	}
 	int rc = -1;
 	if (wd != -1) {
-#ifdef __wasi__
+#if __wasi__ || EMSCRIPTEN
 		rc = sdb_dump (mo); // file, MODE_CGEN, false, NULL);
 		fflush (stdout);
 #else
@@ -783,6 +788,9 @@ static int gen_gperf(MainOptions *mo, const char *file, const char *name) {
 	} else {
 		if (rc == 0) {
 			char *cname = get_cname (name);
+			if (!cname) {
+				return -1;
+			}
 			snprintf (buf, buf_size, "gperf -aclEDCIG --null-strings -H sdb_hash_c_%s"
 					" -N sdb_get_c_%s -t %s.gperf > %s.c\n", cname, cname, name, name);
 			free (cname);
@@ -794,8 +802,7 @@ static int gen_gperf(MainOptions *mo, const char *file, const char *name) {
 					eprintf ("Generated %s.c and %s.h\n", name, name);
 				}
 			} else {
-				eprintf ("Cannot run gperf\n");
-				eprintf ("%s\n", buf);
+				eprintf ("Cannot run gperf: %s\n", buf);
 			}
 		} else {
 			eprintf ("Outdated sdb binary in PATH?\n");
@@ -808,7 +815,7 @@ static int gen_gperf(MainOptions *mo, const char *file, const char *name) {
 
 static const char *main_argparse_getarg(MainOptions *mo) {
 	int cur = mo->argi;
-	if (mo->argi + 1>= mo->argc) {
+	if (mo->argi + 1 >= mo->argc) {
 		return NULL;
 	}
 	mo->argi++;
@@ -1007,7 +1014,7 @@ int main(int argc, const char **argv) {
 					save |= sdb_query (s, mo->argv[i]);
 					if (mo->format) {
 						fflush (stdout);
-						write_null ();
+						ret = write_null ();
 					}
 				}
 			} else {
@@ -1018,7 +1025,7 @@ int main(int argc, const char **argv) {
 					save |= sdb_query (s, line);
 					if (mo->format) {
 						fflush (stdout);
-						write_null ();
+						ret = write_null ();
 					}
 					free (line);
 				}
@@ -1046,7 +1053,7 @@ int main(int argc, const char **argv) {
 				save |= sdb_query (s, mo->argv[i]);
 				if (mo->format) {
 					fflush (stdout);
-					write_null ();
+					ret = write_null ();
 				}
 			}
 		} else {

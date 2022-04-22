@@ -2,25 +2,25 @@
 
 static const char *help_msg_m[] = {
 	"Usage:", "m[-?*dgy] [...] ", "Mountpoints management",
-	"m", " /mnt ext2 0", "Mount ext2 fs at /mnt with delta 0 on IO",
-	"m", " /mnt", "Mount fs at /mnt with autodetect fs and current offset",
-	"m", "", "List all mountpoints in human readable format",
-	"m*", "", "Same as above, but in r2 commands",
-	"m-/", "", "Umount given path (/)",
-	"mL", "", "List filesystem plugins (Same as Lm)",
-	"mc", " [file]", "Cat: Show the contents of the given file",
-	"md", " /", "List directory contents for path",
-	"mf", "[?] [o|n]", "Search files for given filename or for offset",
-	"mg", " /foo [offset size]", "Get fs file/dir and dump to disk (support base64:)",
-	"mi", " /foo/bar", "Get offset and size of given file",
-	"mj", "", "List mounted filesystems in JSON",
-	"mo", " /foo/bar", "Open given file into a malloc://",
-	"mp", " msdos 0", "Show partitions in msdos format at offset 0",
-	"mp", "", "List all supported partition types",
-	"ms", " /mnt", "Open filesystem prompt at /mnt",
-	"mw", " [file] [data]", "Write data into file", // TODO: add mwf
-	"mwf", " [diskfile] [r2filepath]", "Write contents of local diskfile into r2fs mounted path",
-	"my", "", "Yank contents of file into clipboard",
+	"m", " /mnt ext2 0", "mount ext2 fs at /mnt with delta 0 on IO",
+	"m", " /mnt", "mount fs at /mnt with autodetect fs and current offset",
+	"m", "", "list all mountpoints in human readable format",
+	"m*", "", "same as above, but in r2 commands",
+	"m-/", "", "umount given path (/)",
+	"mL", "", "list filesystem plugins (Same as Lm)",
+	"mc", " [file]", "cat: Show the contents of the given file",
+	"md", " /", "list directory contents for path",
+	"mf", "[?] [o|n]", "search files for given filename or for offset",
+	"mg", " /foo [offset size]", "get fs file/dir and dump to disk (support base64:)",
+	"mi", " /foo/bar", "get offset and size of given file",
+	"mj", "", "list mounted filesystems in JSON",
+	"mo", " /foo/bar", "open given file into a malloc://",
+	"mp", " msdos 0", "show partitions in msdos format at offset 0",
+	"mp", "", "list all supported partition types",
+	"ms", " /mnt", "open filesystem prompt at /mnt",
+	"mw", " [file] [data]", "write data into file", // TODO: add mwf
+	"mwf", " [diskfile] [r2filepath]", "write contents of local diskfile into r2fs mounted path",
+	"my", "", "yank contents of file into clipboard",
 	//"TODO: support multiple mountpoints and RFile IO's (need io+core refactorn",
 	NULL
 };
@@ -32,11 +32,19 @@ static const char *help_msg_mf[] = {
 	NULL
 };
 
-static int cmd_mkdir(void *data, const char *input) {
-	char *res = r_syscmd_mkdir (input);
-	if (res) {
-		r_cons_print (res);
-		free (res);
+static int cmd_mkdir(RCore *core, const char *input) {
+	if (R_STR_ISEMPTY (input)) {
+		eprintf ("Usage: mkdir [-p] [directory]\n");
+		r_core_return_code (core, 1);
+	} else {
+		char *res = r_syscmd_mkdir (input);
+		if (res) {
+			r_core_return_code (core, 1);
+			eprintf ("%s", res);
+			free (res);
+		} else {
+			r_core_return_code (core, 0);
+		}
 	}
 	return 0;
 }
@@ -131,6 +139,10 @@ static int cmd_mount(void *data, const char *_input) {
 	RFSPartition *part;
 	RCore *core = (RCore *)data;
 
+	if (strchr (_input, '?')) {
+		r_core_cmd_help (core, help_msg_m);
+		return 0;
+	}
 	if (!strncmp ("kdir", _input, 4)) {
 		return cmd_mkdir (data, _input);
 	}

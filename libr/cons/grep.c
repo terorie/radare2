@@ -37,6 +37,7 @@ static const char *help_detail_tilde[] = {
 	" ..",       "", "internal 'less'",
 	" ...",      "", "internal 'hud' (like V_)",
 	" ....",     "", "internal 'hud' in one line",
+	" :)",       "", "parse C-like output from decompiler",
 	" {:",       "", "human friendly indentation (yes, it's a smiley)",
 	" {:..",     "", "less the output of {:",
 	" {:...",    "", "hud the output of {:",
@@ -123,6 +124,12 @@ static void parse_grep_expression(const char *str) {
 		end_ptr = ptr2 = ptr3 = NULL;
 		while (*ptr) {
 			switch (*ptr) {
+			case ':':
+				if (ptr[1] == ')') { // ":)"
+					grep->code = true;
+					ptr++;
+				}
+				goto while_end;
 			case '.':
 				if (ptr[1] == '.') {
 					if (ptr[2] == '.') {
@@ -205,11 +212,11 @@ static void parse_grep_expression(const char *str) {
 				break;
 			case '^':
 				ptr++;
-				grep->begin = true;
+				grep->begin[grep->nstrings] = true;
 				break;
 			case '!':
 				ptr++;
-				grep->neg = true;
+				grep->neg[grep->nstrings] = true;
 				break;
 			case '?':
 				ptr++;
@@ -323,7 +330,7 @@ static void parse_grep_expression(const char *str) {
 
 		len = strlen (ptr) - 1;
 		if (len > 1 && ptr[len] == '$' && ptr[len - 1] != '\\') {
-			grep->end = 1;
+			grep->end[i] = 1;
 			ptr[len] = '\0';
 		}
 
@@ -496,11 +503,34 @@ R_API void r_cons_grepbuf(void) {
 	const int len = cons->context->buffer_len;
 	RConsGrep *grep = &cons->context->grep;
 	const char *in = buf;
-	int ret, total_lines = 0, buffer_len = 0, l = 0, tl = 0;
+	int ret, total_lines = 0, l = 0, tl = 0;
 	bool show = false;
 	if (cons->context->filter) {
 		cons->context->buffer_len = 0;
 		R_FREE (cons->context->buffer);
+		return;
+	}
+	if (grep->code) {
+		char *buf = r_str_ndup (cons->context->buffer, cons->context->buffer_len);
+		if (buf) {
+			char *res = r_str_tokenize_json (buf);
+			char *nres = r_print_json_indent (res, I(context->color_mode), "  ", NULL);
+			free (res);
+			res = r_str_newf ("%s\n", nres);
+			free (nres);
+			free (buf);
+			if (res) {
+				cons->context->buffer_len = strlen (res);
+				cons->context->buffer_sz = cons->context->buffer_len;
+				free (cons->context->buffer);
+				cons->context->buffer = res;
+			} else {
+				cons->context->buffer_len = 0;
+				cons->context->buffer_sz = 0;
+				free (cons->context->buffer);
+				cons->context->buffer = strdup ("");
+			}
+		}
 		return;
 	}
 
@@ -689,7 +719,6 @@ R_API void r_cons_grepbuf(void) {
 						r_strbuf_append (ob, str);
 						r_strbuf_append (ob, "\n");
 					}
-					buffer_len += ret + 1;
 					free (str);
 				}
 				if (!grep->range_line) {
@@ -773,7 +802,7 @@ R_API int r_cons_grep_line(char *buf, int len) {
 	RConsGrep *grep = &cons->context->grep;
 	const char *delims = " |,;=\t";
 	char *tok = NULL;
-	bool hit = grep->neg;
+	bool hit = true;
 	int outlen = 0;
 	bool use_tok = false;
 	size_t i;
@@ -790,7 +819,7 @@ R_API int r_cons_grep_line(char *buf, int len) {
 	memcpy (in, buf, len);
 
 	if (grep->nstrings > 0) {
-		int ampfail = grep->amp;
+		bool all_hits = true;
 		if (grep->icase) {
 			r_str_case (in, false);
 		}
@@ -801,28 +830,30 @@ R_API int r_cons_grep_line(char *buf, int len) {
 			}
 			const char *p = r_strstr_ansi (in, grep->strings[i]);
 			if (!p) {
-				ampfail = 0;
+				hit = grep->neg[i];
+				all_hits &= hit;
 				continue;
 			}
-			hit = grep->begin
-				? grep->neg
+			hit = grep->begin[i]
+				? grep->neg[i]
 					? p != in
 					: p == in
-				: !grep->neg;
+				: !grep->neg[i];
 
 			// TODO: optimize without strlen without breaking t/feat_grep (grep end)
-			if (grep->end && (strlen (grep->strings[i]) != strlen (p))) {
-				hit = 0;
+			if (grep->end[i] && (strlen (grep->strings[i]) != strlen (p))) {
+				hit = false;
 			}
+			all_hits &= hit;
 			if (!grep->amp) {
 				break;
 			}
 		}
 		if (grep->amp) {
-			hit = ampfail;
+			hit = all_hits;
 		}
 	} else {
-		hit = 1;
+		hit = true;
 	}
 
 	RConsContext *ctx = r_cons_context ();

@@ -126,14 +126,14 @@ static RBuffer *new_buffer(RBufferType type, const void *user) {
 // ret # of bytes copied
 R_API RBuffer *r_buf_new_with_io(void *iob, int fd) {
 	r_return_val_if_fail (iob && fd >= 0, NULL);
-	struct buf_io_user u = { 0 };
+	struct buf_io_user u = {0};
 	u.iob = (RIOBind *)iob;
 	u.fd = fd;
 	return new_buffer (R_BUFFER_IO, &u);
 }
 
 R_API RBuffer *r_buf_new_with_pointers(const ut8 *bytes, ut64 len, bool steal) {
-	struct buf_bytes_user u = { 0 };
+	struct buf_bytes_user u = {0};
 	u.data_steal = bytes;
 	u.length = len;
 	u.steal = steal;
@@ -146,7 +146,7 @@ R_API RBuffer *r_buf_new_empty(ut64 len) {
 		return NULL;
 	}
 
-	struct buf_bytes_user u = { 0 };
+	struct buf_bytes_user u = {0};
 	u.data_steal = buf;
 	u.length = len;
 	u.steal = true;
@@ -158,14 +158,14 @@ R_API RBuffer *r_buf_new_empty(ut64 len) {
 }
 
 R_API RBuffer *r_buf_new_with_bytes(const ut8 *bytes, ut64 len) {
-	struct buf_bytes_user u = { 0 };
+	struct buf_bytes_user u = {0};
 	u.data = bytes;
 	u.length = len;
 	return new_buffer (R_BUFFER_BYTES, &u);
 }
 
 R_API RBuffer *r_buf_new_slice(RBuffer *b, ut64 offset, ut64 size) {
-	struct buf_ref_user u = { 0 };
+	struct buf_ref_user u = {0};
 	u.parent = b;
 	u.offset = offset;
 	u.size = size;
@@ -191,7 +191,7 @@ R_API RBuffer *r_buf_new_sparse(ut8 Oxff) {
 }
 
 R_API RBuffer *r_buf_new(void) {
-	struct buf_bytes_user u = { 0 };
+	struct buf_bytes_user u = {0};
 	u.data = NULL;
 	u.length = 0;
 	return new_buffer (R_BUFFER_BYTES, &u);
@@ -211,14 +211,14 @@ R_API ut64 r_buf_size(RBuffer *b) {
 // rename to new?
 R_API RBuffer *r_buf_new_mmap(const char *filename, int perm) {
 	r_return_val_if_fail (filename, NULL);
-	struct buf_mmap_user u = { 0 };
+	struct buf_mmap_user u = {0};
 	u.filename = filename;
 	u.perm = perm;
 	return new_buffer (R_BUFFER_MMAP, &u);
 }
 
 R_API RBuffer *r_buf_new_file(const char *file, int perm, int mode) {
-	struct buf_file_user u = { 0 };
+	struct buf_file_user u = {0};
 	u.file = file;
 	u.perm = perm;
 	u.mode = mode;
@@ -233,7 +233,7 @@ R_API RBuffer *r_buf_new_slurp(const char *file) {
 		return NULL;
 	}
 
-	struct buf_bytes_user u = { 0 };
+	struct buf_bytes_user u = {0};
 	u.data_steal = (ut8 *)tmp;
 	u.length = (ut64)len;
 	u.steal = true;
@@ -516,10 +516,9 @@ static st64 buf_format(RBuffer *dst, RBuffer *src, const char *fmt, int n) {
 				ut32 d3;
 				ut64 d4;
 				st64 r = r_buf_read (src, tmp, tsize);
-				if (r < tsize) {
+				if (r != tsize) {
 					return -1;
 				}
-
 				switch (tsize) {
 				case 1:
 					d1 = r_read_ble8 (tmp);
@@ -566,7 +565,7 @@ R_API st64 r_buf_fread_at(RBuffer *b, ut64 addr, ut8 *buf, const char *fmt, int 
 		return r;
 	}
 	r = r_buf_fread (b, buf, fmt, n);
-	r_buf_seek (b, o_addr, R_BUF_SET);
+	(void)r_buf_seek (b, o_addr, R_BUF_SET);
 	return r;
 }
 
@@ -598,7 +597,6 @@ R_API st64 r_buf_read_at(RBuffer *b, ut64 addr, ut8 *buf, ut64 len) {
 	if (r < 0) {
 		return r;
 	}
-
 	r = r_buf_read (b, buf, len);
 	r_buf_seek (b, o_addr, R_BUF_SET);
 	return r;
@@ -638,10 +636,12 @@ R_API void r_buf_fini(RBuffer *b) {
 }
 
 R_API void r_buf_free(RBuffer *b) {
-	bool unreferenced = b && b->refctr == 0;
-	r_buf_fini (b);
-	if (unreferenced) {
-		free (b);
+	if (b) {
+		bool unreferenced = b && b->refctr == 0;
+		r_buf_fini (b);
+		if (unreferenced) {
+			free (b);
+		}
 	}
 }
 

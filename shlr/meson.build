@@ -20,7 +20,7 @@ if not capstone_dep.found() or not get_option('use_sys_capstone')
     patches_files = []
     # NOTE: when you update CS_TIP or CS_BRA, also update them in shlr/Makefile
     if capstone_version == 'v5'
-      CS_TIP = 'f36795e36a227a686e634680d5ebc0730a319a2f'
+      CS_TIP = 'c57915c8fd281b68ffa373fa646251fda552e38f'
       CS_BRA = 'next'
       patches_files = [
         'fix-x86-16.patch',
@@ -227,12 +227,23 @@ bochs_dep = declare_dependency(
   include_directories: bochs_inc
 )
 
+if get_option('blob')
+libr2bochs_static = static_library('r2bochs_static', bochs_files,
+  dependencies: [r_util_static_dep],
+  include_directories: bochs_inc,
+  implicit_include_directories: false
+)
+bochs_static_dep = declare_dependency(
+  link_with: libr2bochs_static,
+  include_directories: bochs_inc
+)
+endif
+
 
 # handle java dependency
 java_files = [
   'java/class.c',
   'java/code.c',
-  'java/dsojson.c',
   'java/ops.c',
   #'java/main.c',
 ]
@@ -250,6 +261,18 @@ java_dep = declare_dependency(
   include_directories: java_inc
 )
 
+if get_option('blob')
+libr2java_static = static_library('r2java_static', java_files,
+  dependencies: [r_util_static_dep],
+  include_directories: java_inc,
+  implicit_include_directories: false
+)
+
+java_static_dep = declare_dependency(
+  link_with: libr2java_static,
+  include_directories: java_inc
+)
+endif
 
 # handle qnx dependency
 qnx_files = [
@@ -273,29 +296,18 @@ qnx_dep = declare_dependency(
   include_directories: qnx_inc
 )
 
-# handle lz4 dependency (unused?)
-lz4_dep = dependency('liblz4', required: false)
-if not lz4_dep.found() or not get_option('use_sys_lz4')
-  message('Use bundled lz4')
-  lz4_files = [
-    'lz4/lz4.c',
-  ]
+if get_option('blob')
+libr2qnx_static = static_library('r2qnx_static', qnx_files,
+  dependencies: [r_socket_static_dep],
+  include_directories: qnx_inc,
+  implicit_include_directories: false
+)
 
-  lz4_inc = [platform_inc, include_directories('lz4')]
-
-  libr2lz4 = static_library('r2lz4', lz4_files,
-    include_directories: lz4_inc,
-    implicit_include_directories: false
-  )
-
-  lz4_dep = declare_dependency(
-    link_with: libr2lz4,
-    include_directories: lz4_inc
-  )
-else
-  message('Use system-provided lz4 library')
+qnx_static_dep = declare_dependency(
+  link_with: libr2qnx_static,
+  include_directories: qnx_inc
+)
 endif
-
 
 
 # handle grub dependency
@@ -364,6 +376,19 @@ grub_dep = declare_dependency(
   include_directories: grub_inc
 )
 
+if get_option('blob')
+libr2grub_static = static_library('r2grub_static', grub_files,
+  dependencies: [r_util_static_dep],
+  include_directories: grub_inc,
+  implicit_include_directories: false
+)
+
+grub_static_dep = declare_dependency(
+  link_with: libr2grub_static,
+  include_directories: grub_inc
+)
+endif
+
 # handle winkd dependency
 winkd_files = [
   'winkd/iob_pipe.c',
@@ -386,6 +411,18 @@ winkd_dep = declare_dependency(
   include_directories: winkd_inc
 )
 
+if get_option('blob')
+libr2winkd_static = static_library('r2winkd_static', winkd_files,
+  dependencies: [r_hash_static_dep, r_crypto_static_dep, r_socket_static_dep, r_util_static_dep],
+  include_directories: winkd_inc,
+  implicit_include_directories: false
+)
+
+winkd_static_dep = declare_dependency(
+  link_with: libr2winkd_static,
+  include_directories: winkd_inc
+)
+endif
 
 # handle ar dependency
 ar_files = [
@@ -404,6 +441,19 @@ ar_dep = declare_dependency(
   link_with: libr2ar,
   include_directories: ar_inc
 )
+
+if get_option('blob')
+libr2ar_static = static_library('r2ar_static', ar_files,
+  dependencies: [r_util_static_dep],
+  include_directories: ar_inc,
+  implicit_include_directories: false
+)
+
+ar_static_dep = declare_dependency(
+  link_with: libr2ar_static,
+  include_directories: ar_inc
+)
+endif
 
 # handle mpc dependency
 mpc_files = [

@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2007-2021 - pancake */
+/* radare - LGPL - Copyright 2007-2022 - pancake */
 
 #include "r_types.h"
 #include "r_util.h"
@@ -894,7 +894,7 @@ R_API char *r_str_append_owned(char *ptr, char *string) {
 	if (!ptr) {
 		return string;
 	}
-	char *r = r_str_append(ptr, string);
+	char *r = r_str_append (ptr, string);
 	free (string);
 	return r;
 }
@@ -982,7 +982,6 @@ R_API char* r_str_replace(char *str, const char *key, const char *val, int g) {
 			if (vlen > klen) {
 				newstr = realloc (str, slen + 1);
 				if (!newstr) {
-					eprintf ("realloc fail\n");
 					R_FREE (str);
 					break;
 				}
@@ -1865,8 +1864,8 @@ R_API char *r_str_format_msvc_argv(size_t argc, const char **argv) {
 			r_strbuf_append (&sb, " ");
 		}
 		const char *arg = argv[i];
-		bool must_escape = strchr (arg, '\"') != NULL;
-		bool must_quote = strpbrk (arg, " \t") != NULL || !*arg;
+		bool must_escape = strchr (arg, '\"');
+		bool must_quote = strpbrk (arg, " \t") || !*arg;
 		if (!must_escape && must_quote && *arg && arg[strlen (arg) - 1] == '\\') {
 			// if the last char is a bs and we would quote it, we must also escape
 			must_escape = true;
@@ -2350,22 +2349,44 @@ R_API bool r_str_glob(const char* str, const char *glob) {
 	}
 	while (*str) {
 		if (!*glob) {
-			return true;
+			return false;
 		}
 		switch (*glob) {
 		case '*':
 			if (!*++glob) {
 				return true;
 			}
+			// Advance glob an additional time if it is a '**'
+			if (*glob == '*') {
+				if (!*++glob) {
+					return true;
+				}
+			}
+			// Check if there are additional wildcards
+			// if so, we need to search for the substring in between the wildcards
+			const char *needle_end = glob;
+			while (*needle_end != '*' &&
+					*needle_end != '?' &&
+					*needle_end != '$' &&
+					*needle_end != '^' &&
+					*needle_end != '\0') {
+				needle_end++;
+			}
+			// Find the pattern in between wildcards
+			char* needle = r_str_ndup(glob, needle_end - glob);
+			const char *advance_to = strstr (str, needle);
+			free (needle);
+			if (!advance_to) {
+				return false;
+			}
+			// Advance str to found pattern
 			while (*str) {
-				if (*glob == *str) {
+				if (str == advance_to) {
 					break;
 				}
 				str++;
 			}
 			break;
-		case '$':
-			return (*++glob == '\x00');
 		case '?':
 			str++;
 			glob++;
@@ -2904,6 +2925,7 @@ R_API char *r_str_uri_encode(const char *s) {
 	return trimDown? trimDown: od;
 }
 
+// XXX antipattern, bigendian should be 1 not 0
 R_API int r_str_utf16_to_utf8(ut8 *dst, int len_dst, const ut8 *src, int len_src, int little_endian) {
 	ut8 *outstart = dst;
 	ut8 *outend = dst + len_dst;

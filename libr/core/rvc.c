@@ -173,11 +173,13 @@ static char *find_sha256(const ut8 *block, int len) {
 
 static inline char *sha256_file(const char *fname) {
 	size_t content_length = 0;
+	char *res = NULL;
 	char *content = r_file_slurp (fname, &content_length);
 	if (content) {
-		return find_sha256 ((const ut8 *)content, content_length);
+		res = find_sha256 ((const ut8 *)content, content_length);
+		free (content);
 	}
-	return NULL;
+	return res;
 }
 
 static void free_blobs(RList *blobs) {
@@ -301,7 +303,7 @@ static bool update_blobs(const RList *ignore, RList *blobs, const RList *nh) {
 			continue;
 		}
 		blob->fhash = r_str_new (nh->tail->data);
-		return blob->fhash != NULL;
+		return blob->fhash;
 	}
 	blob = R_NEW (RvcBlob);
 	if (!blob) {
@@ -503,6 +505,7 @@ static RList *load_rvc_ignore(const char *rp) {
 		ignore = r_str_split_duplist (c, "\n", true);
 		free (c);
 	}
+	free (path);
 	return ignore;
 }
 
@@ -736,6 +739,7 @@ static RList *blobs_add(const char *rp, const RList *files) {
 				goto fail_ret;
 			}
 			if (!r_list_append (ret, b)) {
+				free (absp);
 				free (b->fhash);
 				free (b->fname);
 				free (b);

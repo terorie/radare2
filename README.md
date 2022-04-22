@@ -2,12 +2,15 @@
 
 ## Radare2: Unix-Like Reverse Engineering Framework
 
-[![Latest packaged version](https://repology.org/badge/latest-versions/radare2.svg)](https://repology.org/project/radare2/versions) [![Tests Status](https://github.com/radareorg/radare2/workflows/CI/badge.svg?branch=master)](https://github.com/radareorg/radare2/actions/workflows/ci.yml?query=branch%3Amaster) [![freebsd](https://github.com/radareorg/radare2/actions/workflows/freebsd.yml/badge.svg)](https://github.com/radareorg/radare2/actions/workflows/freebsd.yml) [![windows](https://github.com/radareorg/radare2/actions/workflows/windows.yml/badge.svg)](https://github.com/radareorg/radare2/actions/workflows/windows.yml) [![tcc](https://github.com/radareorg/radare2/actions/workflows/tcc.yml/badge.svg?branch=master)](https://github.com/radareorg/radare2/actions/workflows/tcc.yml)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/741/badge)](https://bestpractices.coreinfrastructure.org/projects/741) [![Build Status](https://scan.coverity.com/projects/416/badge.svg)](https://scan.coverity.com/projects/416) [![Total alerts](https://img.shields.io/lgtm/alerts/g/radareorg/radare2.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/radareorg/radare2/alerts/)
+[![Latest packaged version](https://repology.org/badge/latest-versions/radare2.svg)](https://repology.org/project/radare2/versions) [![Tests Status](https://github.com/radareorg/radare2/workflows/ci/badge.svg?branch=master)](https://github.com/radareorg/radare2/actions/workflows/ci.yml?query=branch%3Amaster) [![build](https://github.com/radareorg/radare2/actions/workflows/build.yml/badge.svg)](https://github.com/radareorg/radare2/actions/workflows/build.yml) [![tcc](https://github.com/radareorg/radare2/actions/workflows/tcc.yml/badge.svg?branch=master)](https://github.com/radareorg/radare2/actions/workflows/tcc.yml)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/741/badge)](https://bestpractices.coreinfrastructure.org/projects/741) [![Build Status](https://scan.coverity.com/projects/416/badge.svg)](https://scan.coverity.com/projects/416) [![Total alerts](https://img.shields.io/lgtm/alerts/g/radareorg/radare2.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/radareorg/radare2/alerts/) [![TODO counter](https://img.shields.io/github/search/radareorg/radare2/TODO.svg)](https://github.com/radareorg/radare2/search?q=TODO)
 
 See the [Releases](https://github.com/radareorg/radare2/releases) page for
-binary downloads. The current git `master` branch is `5.6.1`, and the next
-major release will be `5.7.0`.
+downloads. The current git `master` branch is `5.6.9`, next release will be `5.7.0`.
+
+We ensure ABI stability for all the patch releases, you can mix/swap libraries
+and plugins without the need to recompile them if major and minor numbers are
+the same (X.Y.?).
 
 r2 is a complete rewrite of radare. It provides a set of libraries, tools and
 plugins to ease reverse engineering tasks.
@@ -33,7 +36,7 @@ radare2/sys/install.sh
 ```
 
 ```sh
-pip install r2env
+pip install -U r2env
 r2env init
 r2env add radare2@git
 ```
@@ -70,14 +73,15 @@ $ r2 /bin/ls   # open the binary in read-only mode
 
 ## Plugins
 
-Many plugins are included with r2 by default. You can find more plugins using
-the [r2pm](https://github.com/radareorg/radare2-pm) package manager.
+Many plugins are included in r2 by default. But you can extend its capabilities
+by using the [r2pm](https://github.com/radareorg/radare2-pm) package manager.
 
 ```sh
+r2pm -s <word> # search package by word
 r2pm -ci <pkg> # install a package
 ```
 
-Some of the most installed packages are:
+Most popular packages are:
 
 * [esilsolve](https://github.com/radareorg/esilsolve): The symbolic execution plugin, based on esil and z3.
 * [iaito](https://github.com/radareorg/iaito): The official Qt graphical interface.
@@ -132,7 +136,7 @@ V850, CRIS, XAP, PIC, LM32, 8051, 6502, i4004, i8080, Propeller,
 Tricore, CHIP-8, LH5801, T8200, GameBoy, SNES, SPC700, MSP430, Xtensa,
 NIOS II, Java, Dalvik, WebAssembly, MSIL, EBC, TMS320 (c54x, c55x,
 c55+, c66), Hexagon, Brainfuck, Malbolge, whitespace, DCPU16, LANAI,
-MCORE, mcs96, RSP, SuperH-4, VAX, AMD Am29000, LOONGARCH.
+MCORE, mcs96, RSP, SuperH-4, VAX, KVX, Am29000, LOONGARCH.
 
 ## File Formats
 

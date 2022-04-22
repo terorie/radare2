@@ -344,7 +344,7 @@ static bool is_printable_lang(ut64 attr_code) {
 	if (attr_code >= sizeof (dwarf_langs) / sizeof (dwarf_langs[0])) {
 		return false;
 	}
-	return dwarf_langs[attr_code] != NULL;
+	return dwarf_langs[attr_code];
 }
 
 static inline bool is_printable_attr(ut64 attr_code) {
@@ -1039,7 +1039,7 @@ static bool parse_line_raw(const RBin *a, const ut8 *obuf, ut64 len, int mode) {
 	const ut8 *buf_end = obuf + len;
 	const ut8 *tmpbuf = NULL;
 
-	RBinDwarfLineHeader hdr = { 0 };
+	RBinDwarfLineHeader hdr = {0};
 	ut64 buf_size;
 
 	// each iteration we read one header AKA comp. unit

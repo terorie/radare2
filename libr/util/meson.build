@@ -1,7 +1,6 @@
 subdir('d')
 
 r_util_sources = [
-  '../../shlr/lz4/lz4.c',
   'ascii_table.c',
   'assert.c',
   'w32.c',
@@ -9,6 +8,7 @@ r_util_sources = [
   'alloc.c',
   'charset.c',
   'donut.c',
+  'token.c',
   'table.c',
   'bplist.c',
   'sstext.c',
@@ -97,7 +97,9 @@ if get_option('sdb_cgen')
   r_util_sources += r_util_d_sources
 endif
 
-r_util_deps = [ldl, mth, spp_dep, pth, utl, sdb_dep, zlib_dep, platform_deps]
+r_util_deps = [ldl, mth, spp_dep, pth, utl, sdb_dep, lz4_dep, zlib_dep, platform_deps]
+
+
 if host_machine.system().startswith('freebsd') or host_machine.system().startswith('netbsd') or host_machine.system().startswith('haiku')
   # backtrace_symbols_fd requires -lexecinfo
   r_util_deps += [cc.find_library('execinfo')]
@@ -123,6 +125,20 @@ r_util = library('r_util', r_util_sources,
 r_util_dep = declare_dependency(link_with: r_util,
   include_directories: platform_inc,
   dependencies: r_util_deps)
+
+if get_option('blob')
+  r_util_static = static_library('r_util_static', r_util_sources,
+    include_directories: platform_inc,
+    c_args: library_cflags,
+    dependencies: r_util_deps,
+    install: true,
+    implicit_include_directories: false,
+    install_rpath: rpath_lib,
+  )
+  r_util_static_dep = declare_dependency(link_with: r_util_static,
+    include_directories: platform_inc,
+    dependencies: r_util_deps)
+endif
 
 pkgconfig_mod.generate(r_util,
   subdirs: ['libr', 'libr/sdb'],

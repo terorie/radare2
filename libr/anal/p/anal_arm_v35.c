@@ -248,6 +248,16 @@ static const char *decode_shift_64(ShiftType shift) {
 	case ShiftType_LSR:
 		return E_OP_SR;
 
+	// need to include these "shifts"
+	case ShiftType_SXTB:
+	case ShiftType_SXTW:
+	case ShiftType_SXTH:
+	case ShiftType_SXTX:
+	case ShiftType_UXTB:
+	case ShiftType_UXTW:
+	case ShiftType_UXTH:
+	case ShiftType_UXTX:
+
 	case ShiftType_LSL:
 	case ShiftType_MSL:
 		return E_OP_SL;
@@ -621,6 +631,12 @@ static void arg64_append(RStrBuf *sb, Instruction *insn, int n, int i, int sign)
 
 	int shift = LSHIFT2_64 (n);
 	int signext = EXT64 (n);
+	if (!signext) {
+		// this is weird but signext+shift is all in shiftType?
+		// not extend. why even have an extend field?
+		// why not just shiftType = sx* with a shiftValue of 0? 
+		signext = decode_sign_ext64 (op.shiftType);
+	}
 	if (sign && !signext) {
 		signext = size;
 	}
@@ -1580,11 +1596,17 @@ static int analop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len
 		FPOPCALL("/");
 		break;
 	case ARM64_SDIV:
-		OPCALL_SIGN("/", REGBITS64 (1));
+		// arm64 does not have a div-by-zero exception, just quietly sets R0 to 0
+		r_strbuf_setf (&op->esil, "%s,!,?{,0,%s,=,}{,", REG64 (2), REG64 (0));
+		OPCALL_SIGN ("~/", REGBITS64 (1));
+		r_strbuf_appendf (&op->esil, ",}");
 		break;
 	case ARM64_UDIV:
 		/* TODO: support WZR XZR to specify 32, 64bit op */
+		// arm64 does not have a div-by-zero exception, just quietly sets R0 to 0
+		r_strbuf_setf (&op->esil, "%s,!,?{,0,%s,=,}{,", REG64 (2), REG64 (0));
 		OPCALL("/");
+		r_strbuf_appendf (&op->esil, ",}");
 		break;
 	// TODO actually implement some kind of fake PAC or at least clear the bits
 	// PAC B* instructions will not work without clearing PAC bits
@@ -2016,12 +2038,23 @@ static int analop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len
 	case ARM64_STXRB:
 	case ARM64_STXRH:
 	case ARM64_STXR:
+	case ARM64_STLXR:
+	case ARM64_STLXRH:
+	case ARM64_STLXRB:
 	{
 		int size = REGSIZE64 (1);
-		if (insn->operation == ARM64_STXRB) {
-		    size = 1;
-		} else if (insn->operation == ARM64_STXRH) {
-		    size = 2;
+		switch (insn->operation) {
+			case ARM64_STLXRB:
+			case ARM64_STXRB:
+				size = 1;
+				break;
+			case ARM64_STLXRH:
+			case ARM64_STXRH:
+				size = 2;
+				break;
+			default:
+				size = 8;
+				break;
 		}
 		r_strbuf_setf (&op->esil, "0,%s,=,%s,%s,%"PFMT64u",+,=[%d]",
 			REG64 (0), REG64 (1), MEMBASE64 (1), MEMDISP64 (1), size);

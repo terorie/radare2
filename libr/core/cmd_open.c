@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #include <r_bin.h>
 #include <r_debug.h>
@@ -17,7 +17,7 @@ static const char *help_msg_o[] = {
 	"o:"," [len]","open a malloc://[len] copying the bytes from current offset",
 	"o=","","list opened files (ascii-art bars)",
 	"oL","","list all IO plugins registered",
-	"oa","[?][-] [A] [B] [filename]","Specify arch and bits for given file",
+	"oa","[?][-] [A] [B] [filename]","specify arch and bits for given file",
 	"ob","[?] [lbdos] [...]","list opened binary files backed by fd",
 	"oc"," [file]","open core file, like relaunching r2",
 	"of","[?] [file]","open file and map it at addr 0 as read-only",
@@ -47,7 +47,7 @@ static const char *help_msg_on[] = {
 
 static const char *help_msg_oa[] = {
 	"Usage: oa","[-][arch] [bits] ([file])", "Specify arch and bits for given file",
-	"oa"," arm 32","Force arm32 for the current open file",
+	"oa"," arm 32","force arm32 for the current open file",
 	NULL
 };
 
@@ -97,31 +97,31 @@ static const char *help_msg_o_star[] = {
 
 static const char *help_msg_oba[] = {
 	"Usage:", "oba [addr] ([filename])", " # load bininfo and update flags",
-	"oba", " [addr]", "Open bin info from the given address",
-	"oba", " [addr] [baddr]", "Open file and load bin info at given address",
-	"oba", " [addr] [/abs/filename]", "Open file and load bin info at given address",
+	"oba", " [addr]", "open bin info from the given address",
+	"oba", " [addr] [baddr]", "open file and load bin info at given address",
+	"oba", " [addr] [/abs/filename]", "open file and load bin info at given address",
 	NULL
 };
 
 static const char *help_msg_ob[] = {
 	"Usage:", "ob", " # List open binary files backed by fd",
-	"ob", " [bfid]", "Switch to open given objid",
-	"ob", "", "List opened binary files and objid",
-	"ob*", "", "List opened binary files and objid (r2 commands)",
-	"ob", " *", "Select all bins (use 'ob bfid' to pick one)",
-	"ob-", "*", "Delete all binfiles",
-	"ob-", "[objid]", "Delete binfile by binobjid",
-	"ob.", " ([addr])", "Show bfid at current address",
-	"ob=", "", "Show ascii art table having the list of open files",
-	"obL", "", "Same as iL or Li",
-	"oba", " [addr] [baddr]", "Open file and load bin info at given address",
-	"oba", " [addr] [filename]", "Open file and load bin info at given address",
-	"oba", " [addr]", "Open bin info from the given address",
-	"obf", " ([file])", "Load bininfo for current file (useful for r2 -n)",
-	"obj", "", "List opened binary files and objid (JSON format)",
-	"obn", " [name]", "Select binfile by name",
-	"obo", " [fd]", "Switch to open binfile by fd number",
-	"obr", " [baddr]", "Rebase current bin object",
+	"ob", " [bfid]", "switch to open given objid",
+	"ob", "", "list opened binary files and objid",
+	"ob*", "", "list opened binary files and objid (r2 commands)",
+	"ob", " *", "select all bins (use 'ob bfid' to pick one)",
+	"ob-", "*", "delete all binfiles",
+	"ob-", "[objid]", "delete binfile by binobjid",
+	"ob.", " ([addr])", "show bfid at current address",
+	"ob=", "", "show ascii art table having the list of open files",
+	"obL", "", "same as iL or Li",
+	"oba", " [addr] [baddr]", "open file and load bin info at given address",
+	"oba", " [addr] [filename]", "open file and load bin info at given address",
+	"oba", " [addr]", "open bin info from the given address",
+	"obf", " ([file])", "load bininfo for current file (useful for r2 -n)",
+	"obj", "", "list opened binary files and objid (JSON format)",
+	"obn", " [name]", "select binfile by name",
+	"obo", " [fd]", "switch to open binfile by fd number",
+	"obr", " [baddr]", "rebase current bin object",
 	NULL
 };
 
@@ -492,7 +492,7 @@ static void map_list(RIO *io, ut64 off, int mode, RPrint *print, int fd) {
 			char *om_cmd = r_str_newf ("om %d 0x%08"PFMT64x" 0x%08"PFMT64x
 					" 0x%08"PFMT64x" %s%s%s\n", map->fd, r_io_map_begin (map),
 					r_io_map_size (map), map->delta, r_str_rwx_i (map->perm),
-					R_STR_ISEMPTY (map->name)? "" : " ", r_str_get (map->name));
+					R_STR_ISEMPTY (map->name)? "": " ", r_str_get (map->name));
 			if (om_cmd) {
 				om_cmds = r_str_prepend (om_cmds, om_cmd);
 				free (om_cmd);
@@ -501,10 +501,11 @@ static void map_list(RIO *io, ut64 off, int mode, RPrint *print, int fd) {
 		}
 		default:
 			print->cb_printf ("%c%2d fd: %i +0x%08"PFMT64x" 0x%08"PFMT64x
-					" - 0x%08"PFMT64x" %s %s\n",
+					" - 0x%08"PFMT64x" %s%s%s\n",
 					(check_for_current_map && r_io_map_contain (map, off)) ?
 					'*' : '-', map->id, map->fd, map->delta, r_io_map_begin (map),
-					r_io_map_to (map), r_str_rwx_i (map->perm), r_str_get (map->name));
+					r_io_map_to (map), r_str_rwx_i (map->perm),
+					R_STR_ISEMPTY (map->name)? "": " ",r_str_get (map->name));
 			check_for_current_map &= !r_io_map_contain (map, off);
 			break;
 		}
@@ -1327,7 +1328,7 @@ R_API void r_core_file_reopen_remote_debug(RCore *core, char *uri, ut64 addr) {
 
 	if ((file = r_core_file_open (core, uri, R_PERM_RW, addr))) {
 		fd = file->fd;
-		core->num->value = fd;
+		r_core_return_code (core, fd);
 		// if no baddr is defined, use the one provided by the file
 		if (addr == 0) {
 			desc = r_io_desc_get (core->io, file->fd);
@@ -1734,7 +1735,7 @@ static int cmd_open(void *data, const char *input) {
 			eprintf ("Cannot open file '%s'\n", ptr);
 		}
 		r_str_argv_free (argv);
-		core->num->value = fd;
+		r_core_return_code (core, fd);
 		r_core_block_read (core);
 		return 0;
 	// XXX projects use the of command, but i think we should deprecate it... keeping it for now
@@ -1751,7 +1752,7 @@ static int cmd_open(void *data, const char *input) {
 				perms = r_str_rwx (argv[1]);
 			}
 			fd = r_io_fd_open (core->io, argv[0], perms, 0);
-			core->num->value = fd;
+			r_core_return_code (core, fd);
 			r_str_argv_free (argv);
 		} else {
 			eprintf ("Usage: of [arg...]\n");
@@ -1827,7 +1828,7 @@ static int cmd_open(void *data, const char *input) {
 			const char *argv0 = argv ? argv[0] : ptr;
 			if ((file = r_core_file_open (core, argv0, perms, addr))) {
 				fd = file->fd;
-				core->num->value = fd;
+				r_core_return_code (core, fd);
 				if (addr == 0) { // if no baddr defined, use the one provided by the file
 					addr = UT64_MAX;
 				}
@@ -1980,7 +1981,7 @@ static int cmd_open(void *data, const char *input) {
 			r_io_read_at (core->io, core->offset, data, len);
 			if ((file = r_core_file_open (core, uri, R_PERM_RWX, 0))) {
 				fd = file->fd;
-				core->num->value = fd;
+				r_core_return_code (core, fd);
 				r_core_bin_load (core, uri, 0);
 				RIODesc *desc = r_io_desc_get (core->io, fd);
 				if (desc) {
@@ -2183,10 +2184,9 @@ static int cmd_open(void *data, const char *input) {
 			if ((fdx == -1) || (fd == -1) || (fdx == fd)) {
 				free (inp);
 				break;
-			} else {
-				free (inp);
 			}
 			r_io_desc_exchange (core->io, fd, fdx);
+			free (inp);
 			r_core_block_read (core);
 		} else {
 			eprintf ("Usage: ox [fd] [fdx] - exchange two file descriptors\n");

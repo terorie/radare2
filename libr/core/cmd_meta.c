@@ -1,4 +1,4 @@
-/* radare2 - LGPL - Copyright 2009-2021 - pancake */
+/* radare2 - LGPL - Copyright 2009-2022 - pancake */
 
 #include "r_anal.h"
 #include "r_bin.h"
@@ -9,6 +9,11 @@
 #include <sdb.h>
 
 char *getcommapath(RCore *core);
+
+static R_TH_LOCAL ut64 filter_offset = UT64_MAX;
+static R_TH_LOCAL int filter_format = 0;
+static R_TH_LOCAL size_t filter_count = 0;
+static R_TH_LOCAL Sdb *fscache = NULL;
 
 static const char *help_msg_C[] = {
 	"Usage:", "C[-LCvsdfm*?][*?] [...]", " # Metadata management",
@@ -55,6 +60,19 @@ static const char *help_msg_CC[] = {
 	"CCf-", "", "delete all comments in current function",
 	"CCu", " base64:AA== @ addr", "add comment in base64",
 	"CCu", " good boy @ addr", "add good boy comment at given address",
+	NULL
+};
+
+// IMHO 'code-line' should be universal concept, instead of dbginfo/dwarf/...
+static const char *help_msg_CL[] = {
+	"Usage: CL", ".j-", "@addr - manage code-line references (loaded via bin.dbginfo and shown when asm.dwarf)",
+	"CL", "", "list all code line information (virtual address <-> source file:line)",
+	"CLj", "", "same as above but in JSON format (See dir.source to change the path to find the referenced lines)",
+	"CL*", "", "same as above but in r2 commands format",
+	"CL.", "", "show list all code line information (virtual address <-> source file:line)",
+	"CL-", "*", "remove all the cached codeline information",
+	"CL", " addr file:line", "register new file:line source details, r2 will slurp the line",
+	"CL", " addr base64:text", "register new source details for given address using base64",
 	NULL
 };
 
@@ -105,7 +123,7 @@ static const char *help_msg_Cvb[] = {
 	"Cvb", "", "list all base pointer args/vars comments in human friendly format",
 	"Cvb*", "", "list all base pointer args/vars comments in r2 format",
 	"Cvb-", "[name]", "delete comments for var/arg at current offset for base pointer",
-	"Cvb", " [name]", "Show comments for var/arg at current offset for base pointer",
+	"Cvb", " [name]", "show comments for var/arg at current offset for base pointer",
 	"Cvb", " [name] [comment]", "add/append comment for the variable with the current name",
 	"Cvb!", "[name]", "edit comment using cfg editor",
 	NULL
@@ -117,7 +135,7 @@ static const char *help_msg_Cvr[] = {
 	"Cvr", "", "list all register based args comments in human friendly format",
 	"Cvr*", "", "list all register based args comments in r2 format",
 	"Cvr-", "[name]", "delete comments for register based arg for that name",
-	"Cvr", "[name]", "Show comments for register based arg for that name",
+	"Cvr", "[name]", "show comments for register based arg for that name",
 	"Cvr", "[name] [comment]", "add/append comment for the variable",
 	"Cvr!", "[name]", "edit comment using cfg editor",
 	NULL
@@ -128,7 +146,7 @@ static const char *help_msg_Cvs[] = {
 	"Cvs!", "[name]", "edit comment using cfg editor",
 	"Cvs", "", "list all stack based args/vars comments in human friendly format",
 	"Cvs", "[name] [comment]", "add/append comment for the variable",
-	"Cvs", "[name]", "Show comments for stack pointer var/arg with that name",
+	"Cvs", "[name]", "show comments for stack pointer var/arg with that name",
 	"Cvs*", "", "list all stack based args/vars comments in r2 format",
 	"Cvs-", "[name]", "delete comments for stack pointer var/arg with that name",
 	"Cvs?", "", "show this help",
@@ -202,10 +220,6 @@ static int print_meta_fileline(RCore *core, const char *file_line) {
 }
 #endif
 
-static ut64 filter_offset = UT64_MAX;
-static int filter_format = 0;
-static size_t filter_count = 0;
-
 static bool print_addrinfo_json(void *user, const char *k, const char *v) {
 	ut64 offset = sdb_atoi (k);
 	if (!offset || offset == UT64_MAX) {
@@ -233,18 +247,29 @@ static bool print_addrinfo_json(void *user, const char *k, const char *v) {
 	int line = atoi (colonpos + 1);
 	ut64 addr = offset;
 	PJ *pj = (PJ*)user;
-	pj_o (pj);
-	pj_ks (pj, "file", file);
-	pj_kn (pj, "line", line);
-	pj_kn (pj, "addr", addr);
-	if (r_file_exists (file)) {
-		char *row = r_file_slurp_line (file, line, 0);
-		pj_ks (pj, "text", file);
-		free (row);
-	} else {
-		// eprintf ("Cannot open '%s'\n", file);
+	if (pj) {
+		pj_o (pj);
+		pj_ks (pj, "file", file);
+		pj_kn (pj, "line", line);
+		pj_kn (pj, "addr", addr);
+		const char *cached_existance = sdb_const_get (fscache, file, NULL);
+		bool file_exists = false;
+		if (cached_existance) {
+			file_exists = !strcmp (cached_existance, "1");	
+		} else {
+			if (r_file_exists (file)) {
+				sdb_set (fscache, file, "1", 0);
+			} else {
+				sdb_set (fscache, file, "0", 0);
+			}
+		}
+		if (file_exists) {
+			char *row = r_file_slurp_line (file, line, 0);
+			pj_ks (pj, "text", file);
+			free (row);
+		}
+		pj_end (pj);
 	}
-	pj_end (pj);
 	free (subst);
 	return true;
 }
@@ -301,12 +326,9 @@ static int cmd_meta_lineinfo(RCore *core, const char *input) {
 	int all = false;
 	const char *p = input;
 	char *file_line = NULL;
-	char *pheap = NULL;
 
 	if (*p == '?') {
-		eprintf ("Usage: CL[.-*?] [addr] [file:line]\n");
-		eprintf ("or: CL [addr] base64:[string]\n");
-		free (pheap);
+		r_core_cmd_help (core, help_msg_CL);
 		return 0;
 	}
 	if (*p == '-') {
@@ -342,7 +364,6 @@ static int cmd_meta_lineinfo(RCore *core, const char *input) {
 		} else {
 			sdb_foreach (core->bin->cur->sdb_addrinfo, print_addrinfo, NULL);
 		}
-		free (pheap);
 		return 0;
 	}
 
@@ -356,6 +377,7 @@ static int cmd_meta_lineinfo(RCore *core, const char *input) {
 			offset = r_num_math (core->num, myp);
 		}
 
+		char *pheap = NULL;
 		if (!strncmp (sp, "base64:", 7)) {
 			int len = 0;
 			ut8 *o = sdb_decode (sp + 7, &len);
@@ -384,25 +406,32 @@ static int cmd_meta_lineinfo(RCore *core, const char *input) {
 		// taken from r2 // TODO: we should move this addrinfo sdb logic into RBin.. use HT
 		filter_offset = offset;
 		filter_count = 0;
+		fscache = sdb_new0 ();
+		PJ *pj = NULL;
 		if (use_json) {
-			PJ *pj = r_core_pj_new (core);
+			pj = r_core_pj_new (core);
 			pj_a (pj);
-			sdb_foreach (core->bin->cur->sdb_addrinfo, print_addrinfo_json, pj);
-			if (filter_count == 0) {
-				print_meta_offset (core, offset, pj);
+			if (core->bin->cur && core->bin->cur->sdb_addrinfo) {
+				sdb_foreach (core->bin->cur->sdb_addrinfo, print_addrinfo_json, pj);
 			}
-			pj_end (pj);
-			char *s = pj_drain (pj);
-			r_cons_printf ("%s\n", s);
-			free (s);
 		} else {
-			sdb_foreach (core->bin->cur->sdb_addrinfo, print_addrinfo, NULL);
-			if (filter_count == 0) {
-				print_meta_offset (core, offset, NULL);
+			if (core->bin->cur && core->bin->cur->sdb_addrinfo) {
+				sdb_foreach (core->bin->cur->sdb_addrinfo, print_addrinfo, NULL);
 			}
 		}
+		if (filter_count == 0) {
+			print_meta_offset (core, offset, pj);
+		}
+		if (use_json) {
+			pj_end (pj);
+			char *s = pj_drain (pj);
+			if (s) {
+				r_cons_printf ("%s\n", s);
+				free (s);
+			}
+		}
+		sdb_free (fscache);
 	}
-	free (pheap);
 	return 0;
 }
 
@@ -882,7 +911,7 @@ static int cmd_meta_others(RCore *core, const char *input) {
 						break;
 					}
 				} else if (type == 's') { // "Cs"
-					char tmp[256] = R_EMPTY;
+					char tmp[256] = {0};
 					int i, j, name_len = 0;
 					if (input[1] == 'a' || input[1] == '8') {
 						(void)r_io_read_at (core->io, addr, (ut8*)name, sizeof (name) - 1);

@@ -235,7 +235,7 @@ R_API bool r_anal_block_relocate(RAnalBlock *block, ut64 addr, ut64 size) {
 		return true;
 	}
 	if (r_anal_get_block_at (block->anal, addr)) {
-		// Two blocks at the same addr is illegle you know...
+		// Two blocks at the same addr is illegal you know...
 		return false;
 	}
 
@@ -274,7 +274,7 @@ R_API RAnalBlock *r_anal_block_split(RAnalBlock *bbi, ut64 addr) {
 	RAnal *anal = bbi->anal;
 	r_return_val_if_fail (bbi && addr >= bbi->addr && addr < bbi->addr + bbi->size && addr != UT64_MAX, 0);
 	if (addr == bbi->addr) {
-		r_anal_block_ref (bbi); // ref to be consistent with splitted return refcount
+		r_anal_block_ref (bbi); // ref to be consistent with splitted return ref-count
 		return bbi;
 	}
 
@@ -401,7 +401,7 @@ R_API void r_anal_block_unref(RAnalBlock *bb) {
 		RAnal *anal = bb->anal;
 		r_rbtree_aug_delete (&anal->bb_tree, &bb->addr, __bb_addr_cmp, NULL, __block_free_rb, NULL, __max_end);
 		block_free (bb);
-	//	r_return_if_fail (r_list_empty (bb->fcns));
+		// r_return_if_fail (r_list_empty (bb->fcns));
 	}
 }
 
@@ -639,12 +639,23 @@ static bool shortest_path_successor_cb(ut64 addr, void *user) {
 	return addr != ctx->dst; // break if we found our destination
 }
 
+static ut64 bb_addr_for(RAnal *a, ut64 n) {
+	RListIter *iter;
+	RAnalBlock *bb;
+	RList *blocks = r_anal_get_blocks_in (a, n);
+	r_list_foreach (blocks, iter, bb) {
+		return bb->addr;
+	}
+	return n;
+}
 
 R_API R_NULLABLE RList/*<RAnalBlock *>*/ *r_anal_block_shortest_path(RAnalBlock *block, ut64 dst) {
+	ut64 dstbb_addr = bb_addr_for (block->anal, dst);
+
 	RList *ret = NULL;
 	PathContext ctx;
 	ctx.anal = block->anal;
-	ctx.dst = dst;
+	ctx.dst = dstbb_addr;
 
 	// two vectors to swap cur_visit/next_visit
 	RPVector visit_a;
@@ -678,8 +689,8 @@ R_API R_NULLABLE RList/*<RAnalBlock *>*/ *r_anal_block_shortest_path(RAnalBlock 
 
 	// reconstruct the path
 	bool found = false;
-	RAnalBlock *prev = ht_up_find (ctx.visited, dst, &found);
-	RAnalBlock *dst_block = r_anal_get_block_at (block->anal, dst);
+	RAnalBlock *prev = ht_up_find (ctx.visited, dstbb_addr, &found);
+	RAnalBlock *dst_block = r_anal_get_block_at (block->anal, dstbb_addr);
 	if (found && dst_block) {
 		ret = r_list_newf ((RListFree)r_anal_block_unref);
 		r_anal_block_ref (dst_block);
@@ -721,16 +732,18 @@ R_API void r_anal_block_update_hash(RAnalBlock *block) {
 	if (!block->anal->iob.read_at) {
 		return;
 	}
+	if (block->size < 1) {
+		return;
+	}
 	ut8 *buf = malloc (block->size);
-	if (!buf) {
-		return;
-	}
-	if (!block->anal->iob.read_at (block->anal->iob.io, block->addr, buf, block->size)) {
+	if (buf) {
+		if (!block->anal->iob.read_at (block->anal->iob.io, block->addr, buf, block->size)) {
+			free (buf);
+			return;
+		}
+		block->bbhash = r_hash_xxhash (buf, block->size);
 		free (buf);
-		return;
 	}
-	block->bbhash = r_hash_xxhash (buf, block->size);
-	free (buf);
 }
 
 typedef struct {

@@ -649,7 +649,7 @@ static void remove_cycles(RAGraph *g) {
 	const RGraphEdge *e;
 	const RListIter *it;
 
-	g->back_edges = r_list_new ();
+	g->back_edges = r_list_newf (free);
 	cyclic_vis.back_edge = (RGraphEdgeCallback) view_cyclic_edge;
 	cyclic_vis.data = g;
 	r_graph_dfs (g->graph, &cyclic_vis);
@@ -1624,6 +1624,12 @@ static void place_original(RAGraph *g) {
 	sdb_free (D);
 }
 
+static void aedge_free(AEdge *e) {
+	r_list_free (e->x);
+	r_list_free (e->y);
+	free (e);
+}
+
 static void ranode_free(RANode *n) {
 	free (n->title);
 	free (n->body);
@@ -1720,6 +1726,7 @@ static void fix_back_edge_dummy_nodes(RAGraph *g, RANode *from, RANode *to) {
 			g->layers[v->layer].n_nodes -= 1;
 
 			r_graph_del_node (g->graph, v->gnode);
+			ranode_free (v);
 		}
 	}
 }
@@ -1881,7 +1888,7 @@ static void backedge_info(RAGraph *g) {
 					r_list_append ((g->layout == 0 ? e->x : e->y), (void *) (size_t) (min - 1));
 				}
 
-				r_list_append(g->edges, e);
+				r_list_append (g->edges, e);
 			}
 		}
 	}
@@ -1944,7 +1951,7 @@ static void set_layout(RAGraph *g) {
 	int i, j, k;
 
 	r_list_free (g->edges);
-	g->edges = r_list_new ();
+	g->edges = r_list_newf ((RListFree)aedge_free);
 
 	remove_cycles (g);
 	assign_layers (g);
@@ -2171,7 +2178,7 @@ static char *get_bb_body(RCore *core, RAnalBlock *b, int opts, RAnalFunction *fc
 		if (b->jump > b->addr) {
 			RAnalBlock *jumpbb = r_anal_get_block_at (b->anal, b->jump);
 			if (jumpbb && r_list_contains (jumpbb->fcns, fcn)) {
-				if (emu && core->anal->last_disasm_reg != NULL && !jumpbb->parent_reg_arena) {
+				if (emu && core->anal->last_disasm_reg && !jumpbb->parent_reg_arena) {
 					jumpbb->parent_reg_arena = r_reg_arena_dup (core->anal->reg, core->anal->last_disasm_reg);
 				}
 				if (jumpbb->parent_stackptr == INT_MAX) {
@@ -2184,7 +2191,7 @@ static char *get_bb_body(RCore *core, RAnalBlock *b, int opts, RAnalFunction *fc
 		if (b->fail > b->addr) {
 			RAnalBlock *failbb = r_anal_get_block_at (b->anal, b->fail);
 			if (failbb && r_list_contains (failbb->fcns, fcn)) {
-				if (emu && core->anal->last_disasm_reg != NULL && !failbb->parent_reg_arena) {
+				if (emu && core->anal->last_disasm_reg && !failbb->parent_reg_arena) {
 					failbb->parent_reg_arena = r_reg_arena_dup (core->anal->reg, core->anal->last_disasm_reg);
 				}
 				if (failbb->parent_stackptr == INT_MAX) {
@@ -2478,7 +2485,7 @@ static bool get_cgnodes(RAGraph *g, RCore *core, RAnalFunction *fcn) {
 	refs = r_anal_function_get_refs (fcn);
 	r_list_foreach (refs, iter, ref) {
 		title = get_title (ref->addr);
-		if (r_agraph_get_node (g, title) != NULL) {
+		if (r_agraph_get_node (g, title)) {
 			continue;
 		}
 		free (title);
@@ -3770,7 +3777,8 @@ R_API RANode *r_agraph_add_node(const RAGraph *g, const char *title, const char 
 		free (estr);
 		free (b);
 		char *k = r_str_newf ("agraph.nodes.%s.body", res->title);
-		sdb_set_owned (g->db, k, s, 0);
+		sdb_set (g->db, k, s, 0);
+		free (s);
 		free (k);
 	}
 	return res;
@@ -4302,7 +4310,7 @@ R_API int r_core_visual_graph(RCore *core, RAGraph *g, RAnalFunction *_fcn, int 
 	g->is_interactive = is_interactive;
 	bool asm_comments = r_config_get_i (core->config, "asm.comments");
 	r_config_set (core->config, "asm.comments",
-		r_str_bool (r_config_get_i (core->config, "graph.comments")));
+			r_str_bool (r_config_get_i (core->config, "graph.comments")));
 
 	/* we want letters as shortcuts for call/jmps */
 	core->is_asmqjmps_letter = true;
@@ -4320,7 +4328,7 @@ R_API int r_core_visual_graph(RCore *core, RAGraph *g, RAnalFunction *_fcn, int 
 	grd->fs = is_interactive == 1;
 	grd->core = core;
 	grd->follow_offset = _fcn == NULL;
-	grd->fcn = fcn != NULL? &fcn: NULL;
+	grd->fcn = fcn? &fcn: NULL;
 	ret = agraph_refresh (grd);
 	if (!ret || is_interactive != 1) {
 		r_cons_newline ();
@@ -5042,7 +5050,7 @@ R_API RAGraph *create_agraph_from_graph(const RGraph/*<RGraphNodeInfo>*/ *graph)
 	}
 	result_agraph->need_reload_nodes = false;
 	// Cache lookup to build edges
-	HtPPOptions pointer_options = { 0 };
+	HtPPOptions pointer_options = {0};
 	HtPP /*<RGraphNode *node, RANode *anode>*/ *hashmap = ht_pp_new_opt (&pointer_options);
 	
 	if (!hashmap) {

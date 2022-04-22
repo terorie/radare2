@@ -243,7 +243,7 @@ static CPU_CONST *const_by_value(CPU_MODEL *cpu, int type, ut32 v) {
 static RStrBuf *__generic_io_dest(ut8 port, int write, CPU_MODEL *cpu) {
 	RStrBuf *r = r_strbuf_new ("");
 	CPU_CONST *c = const_by_value (cpu, CPU_CONST_REG, port);
-	if (c != NULL) {
+	if (c) {
 		r_strbuf_set (r, c->key);
 		if (write) {
 			r_strbuf_append (r, ",=");
@@ -1296,7 +1296,7 @@ INST_HANDLER (sbix) {	// SBIC A, b
 	}
 	int a = (buf[0] >> 3) & 0x1f;
 	int b = buf[0] & 0x07;
-	RAnalOp next_op = { 0 };
+	RAnalOp next_op = {0};
 	RStrBuf *io_port;
 
 	op->type2 = 0;
@@ -1697,8 +1697,8 @@ static int avr_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *buf, int len, 
 
 	int size = avr_anal (anal, mnemonic, sizeof (mnemonic), addr, buf, len);
 
-	if (!strcmp (mnemonic, "invalid") ||
-		!strcmp (mnemonic, "truncated")) {
+	if (!strcmp (mnemonic, "invalid")
+			|| !strcmp (mnemonic, "truncated")) {
 		op->eob = true;
 		op->mnemonic = strdup (mnemonic);
 		op->size = 2;
@@ -1713,7 +1713,7 @@ static int avr_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *buf, int len, 
 		ut64 offset = 0;
 		r_anal_esil_reg_write (anal->esil, "_prog", offset);
 
-		offset += (1 << cpu->pc);
+		offset += (1ULL << cpu->pc);
 		r_anal_esil_reg_write (anal->esil, "_io", offset);
 
 		offset += const_get_value (const_by_name (cpu, CPU_CONST_PARAM, "sram_start"));
@@ -1728,7 +1728,8 @@ static int avr_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *buf, int len, 
 	// process opcode
 	avr_op_analyze (anal, op, addr, buf, len, cpu);
 
-	op->mnemonic = op->size > 1? strdup (mnemonic): "invalid";
+	free (op->mnemonic);
+	op->mnemonic = op->size > 1? strdup (mnemonic): strdup ("invalid");
 	op->size = size;
 
 	return size;

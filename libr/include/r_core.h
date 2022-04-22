@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #ifndef R2_CORE_H
 #define R2_CORE_H
@@ -30,6 +30,9 @@
 #include "r_crypto.h"
 #include "r_bind.h"
 #include "r_codemeta.h"
+
+// TODO: thois var should be 1 at some point :D
+#define SHELLFILTER 0
 
 #ifdef __cplusplus
 extern "C" {
@@ -357,6 +360,7 @@ struct r_core_t {
 	RMainCallback r_main_radare2;
 	// int (*r_main_radare2)(int argc, char **argv);
 	int (*r_main_rafind2)(int argc, const char **argv);
+	int (*r_main_r2pm)(int argc, const char **argv);
 	int (*r_main_radiff2)(int argc, const char **argv);
 	int (*r_main_rabin2)(int argc, const char **argv);
 	int (*r_main_rarun2)(int argc, const char **argv);
@@ -387,7 +391,7 @@ R_API int r_core_bind(RCore *core, RCoreBind *bnd);
 typedef struct r_core_cmpwatch_t {
 	ut64 addr;
 	int size;
-	char cmd[32];
+	char *cmd;
 	ut8 *odata;
 	ut8 *ndata;
 } RCoreCmpWatcher;
@@ -395,7 +399,14 @@ typedef struct r_core_cmpwatch_t {
 typedef int (*RCoreSearchCallback)(RCore *core, ut64 from, ut8 *buf, int len);
 
 #ifdef R_API
-//#define r_core_ncast(x) (RCore*)(size_t)(x)
+
+typedef int RCmdReturnCode;
+#define R_CMD_RC_FAILURE 1
+#define R_CMD_RC_SUCCESS 0
+#define R_CMD_RC_QUIT -2
+#define R_CMD_RC_FASTQUIT -1
+#define r_core_return_code(core, val) (core)->num->value = (val)
+
 R_API RList *r_core_list_themes(RCore *core);
 R_API char *r_core_get_theme(RCore *core);
 R_API const char *r_core_get_section_name(RCore *core, ut64 addr);
@@ -575,9 +586,6 @@ R_API int r_core_yank_file_all(RCore *core, const char *input);
 R_API void r_core_loadlibs_init(RCore *core);
 R_API bool r_core_loadlibs(RCore *core, int where, const char *path);
 R_API int r_core_cmd_buffer(RCore *core, const char *buf);
-R_API int r_core_cmdf(RCore *core, const char *fmt, ...) R_PRINTF_CHECK(2, 3);
-R_API int r_core_cmd0(RCore *core, const char *cmd);
-R_API char *r_core_cmd_str(RCore *core, const char *cmd);
 R_API int r_core_cmd_foreach(RCore *core, const char *cmd, char *each);
 R_API int r_core_cmd_foreach3(RCore *core, const char *cmd, char *each);
 R_API char *r_core_op_str(RCore *core, ut64 addr);
@@ -708,7 +716,7 @@ R_API int r_core_gdiff(RCore *core1, RCore *core2);
 R_API int r_core_gdiff_fcn(RCore *c, ut64 addr, ut64 addr2);
 
 R_API bool r_core_project_open(RCore *core, const char *file);
-R_API int r_core_project_cat(RCore *core, const char *name);
+R_API void r_core_project_cat(RCore *core, const char *name);
 R_API int r_core_project_delete(RCore *core, const char *prjfile);
 R_API int r_core_project_list(RCore *core, int mode);
 R_API bool r_core_project_save_script(RCore *core, const char *file, int opts);
@@ -820,12 +828,12 @@ R_API void r_core_clippy(RCore *core, const char *msg);
 
 /* watchers */
 R_API void r_core_cmpwatch_free(RCoreCmpWatcher *w);
-R_API RCoreCmpWatcher *r_core_cmpwatch_get(RCore *core, ut64 addr);
-R_API int r_core_cmpwatch_add(RCore *core, ut64 addr, int size, const char *cmd);
-R_API int r_core_cmpwatch_del(RCore *core, ut64 addr);
-R_API int r_core_cmpwatch_update(RCore *core, ut64 addr);
-R_API int r_core_cmpwatch_show(RCore *core, ut64 addr, int mode);
-R_API int r_core_cmpwatch_revert(RCore *core, ut64 addr);
+R_API R_BORROW RCoreCmpWatcher *r_core_cmpwatch_get(RCore *core, ut64 addr);
+R_API bool r_core_cmpwatch_add(RCore *core, ut64 addr, int size, const char *cmd);
+R_API bool r_core_cmpwatch_del(RCore *core, ut64 addr);
+R_API bool r_core_cmpwatch_update(RCore *core, ut64 addr);
+R_API bool r_core_cmpwatch_show(RCore *core, ut64 addr, int mode);
+R_API bool r_core_cmpwatch_revert(RCore *core, ut64 addr);
 
 /* undo */
 R_API RCoreUndo *r_core_undo_new(ut64 offset, const char *action, const char *revert);
@@ -952,7 +960,7 @@ R_API void r_core_task_del_all_done(RCoreTaskScheduler *scheduler);
 R_API RCoreTask *r_core_task_self(RCoreTaskScheduler *scheduler);
 R_API void r_core_task_join(RCoreTaskScheduler *scheduler, RCoreTask *current, int id);
 typedef void (*inRangeCb) (RCore *core, ut64 from, ut64 to, int vsize, void *cb_user);
-R_API int r_core_search_value_in_range(RCore *core, RInterval search_itv, ut64 vmin, ut64 vmax, int vsize, inRangeCb cb, void *cb_user);
+R_IPI int r_core_search_value_in_range(RCore *core, bool relative, RInterval search_itv, ut64 vmin, ut64 vmax, int vsize, inRangeCb cb, void *cb_user);
 
 R_API RCoreAutocomplete *r_core_autocomplete_add(RCoreAutocomplete *parent, const char* cmd, int type, bool lock);
 R_API void r_core_autocomplete_free(RCoreAutocomplete *obj);

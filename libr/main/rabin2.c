@@ -707,7 +707,7 @@ R_API int r_main_rabin2(int argc, const char **argv) {
 			if (is_active (R_BIN_REQ_CLASSES)) {
 				rad = R_MODE_CLASSDUMP;
 			} else {
-			  	set_action (R_BIN_REQ_CLASSES);
+				set_action (R_BIN_REQ_CLASSES);
 			}
 			break;
 		case 'f': arch_name = strdup (opt.arg); break;
@@ -1125,9 +1125,10 @@ R_API int r_main_rabin2(int argc, const char **argv) {
 	}
 #define isradjson (rad==R_MODE_JSON&&actions>0)
 #define run_action(n,x,y) {\
-	if (action&(x)) {\
-		if (isradjson) pj_k (pj, n);\
+	if (action & (x)) {\
+		if (isradjson) { pj_k (pj, n); } \
 		if (!r_core_bin_info (&core, y, pj, rad, va, &filter, chksum)) {\
+			eprintf ("Missing bin header %s\n", n);\
 			if (isradjson) pj_b (pj, false);\
 		};\
 	}\

@@ -111,6 +111,7 @@ RUN
 
 NAME=grep neg begin
 FILE=malloc://1024
+ARGS=-a x86 -b 64
 CMDS=i~!^size
 EXPECT=<<EOF
 fd       3
@@ -128,6 +129,7 @@ RUN
 
 NAME=grep neg begin 
 FILE=malloc://1024
+ARGS=-a x86 -b 64
 CMDS=i~!^size
 EXPECT=<<EOF
 fd       3
@@ -145,6 +147,7 @@ RUN
 
 NAME=grep neg
 FILE=malloc://1024
+ARGS=-a x86 -b 64
 CMDS=i~!fd
 EXPECT=<<EOF
 file     malloc://1024
@@ -169,7 +172,6 @@ EOF
 RUN
 
 NAME=double grep neg
-BROKEN=1
 FILE=malloc://1024
 CMDS=i~f~!file
 EXPECT=<<EOF
@@ -308,7 +310,6 @@ EOF
 RUN
 
 NAME=multigrep2
-BROKEN=1
 FILE=malloc://1024
 CMDS=<<EOF
 ?e hello world~hello~!boing
@@ -429,7 +430,6 @@ EOF
 RUN
 
 NAME=multi-command single-line grep
-ARGS=-ecfg.newshell=true
 CMDS=<<EOF
 ?e Hello World; ?e 4e2420~4e2420
 EOF

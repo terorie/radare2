@@ -161,7 +161,7 @@ static ut64 r_num_from_binary(const char *str) {
 	ut64 ret = 0;
 	for (j = 0, i = strlen (str) - 1; i > 0; i--, j++) {
 		if (str[i] == '1') {
-			ret |= (1 << j);
+			ret |= (ut64) (1ULL << j);
 		} else if (str[i] != '0') {
 			break;
 		}
@@ -513,7 +513,7 @@ R_API ut64 r_num_math(RNum *num, const char *str) {
 			p = group + 1;
 			if (r_str_delta (p, '(', ')') < 0) {
 				char *p2 = strchr (p, '(');
-				if (p2 != NULL) {
+				if (p2) {
 					*p2 = '\0';
 					ret = r_num_op (op, ret, r_num_math_internal (num, p));
 					ret = r_num_op (op, ret, r_num_math (num, p2 + 1));

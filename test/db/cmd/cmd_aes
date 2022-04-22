@@ -52,7 +52,11 @@ aes
 aes
 EOF
 EXPECT=<<EOF
+"aep ret0=dr R0=0;aexa ret"
 aep test @ 0x5
+"aep memcpy=wf `dr?A1` `dr?A2` @ `dr?A0`;aexa ret"
+"aep strlen=dr R0=`pszl@r:A0`;aexa ret"
+"aep puts=psz@r:A0; aexa ret"
 test
 EOF
 RUN
@@ -72,7 +76,31 @@ aes
 aes
 EOF
 EXPECT=<<EOF
+"aep ret0=dr R0=0;aexa ret"
 aep test @ 0x5
+"aep memcpy=wf `dr?A1` `dr?A2` @ `dr?A0`;aexa ret"
+"aep strlen=dr R0=`pszl@r:A0`;aexa ret"
+"aep puts=psz@r:A0; aexa ret"
 test
+EOF
+RUN
+
+NAME=emulate imports
+FILE=bins/mach0/hello-puts
+CMDS=<<EOF
+s main
+aepc $$
+aeim
+aaep
+aep
+aecs
+EOF
+EXPECT=<<EOF
+"aep ret0=dr R0=0;aexa ret"
+"aep memcpy=wf `dr?A1` `dr?A2` @ `dr?A0`;aexa ret"
+"aep strlen=dr R0=`pszl@r:A0`;aexa ret"
+"aep puts=psz@r:A0; aexa ret"
+aep puts @ 0x1050
+Hello World
 EOF
 RUN

@@ -241,7 +241,7 @@ static int init_pdb7_root_stream(RPdb *pdb, int *root_page_list, int pages_amoun
 // pdb_stream->pdb_stream = (R_PDB_STREAM *) malloc(sizeof(R_PDB_STREAM));
 // init_r_pdb_stream(pdb_stream->pdb_stream, fp, pages, pages_amount, index, size, page_size);
 // pdb_stream->load = pLoad;
-// if (pLoad != NULL) {
+// if (pLoad) {
 // pLoad(pdb_stream, &(pdb_stream->pdb_stream->stream_file));
 // }
 // }
@@ -834,7 +834,7 @@ static int build_member_format(STypeInfo *type_info, RStrBuf *format, RStrBuf *n
 	type_info = &under_type->type_data;
 
 	char *member_format = NULL;
-	char tmp_format[5] = { 0 }; // used as writable format buffer
+	char tmp_format[5] = {0}; // used as writable format buffer
 
 	switch (type_info->leaf_type) {
 	case eLF_SIMPLE_TYPE: {

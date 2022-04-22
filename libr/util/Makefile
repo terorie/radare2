@@ -14,16 +14,23 @@ OBJS+=utf8.o utf16.o utf32.o strbuf.o lib.o name.o spaces.o signal.o syscmd.o
 OBJS+=udiff.o bdiff.o stack.o queue.o tree.o idpool.o assert.o bplist.o
 OBJS+=punycode.o pkcs7.o x509.o asn1.o astr.o json_parser.o json_indent.o skiplist.o
 OBJS+=pj.o rbtree.o intervaltree.o qrcode.o vector.o skyline.o str_constpool.o str_trim.o
-OBJS+=ascii_table.o protobuf.o graph_drawable.o axml.o sstext.o new_rbtree.o
+OBJS+=ascii_table.o protobuf.o graph_drawable.o axml.o sstext.o new_rbtree.o token.o
 
 ifeq (${HAVE_GPERF},1)
 OBJS+=d/ascii.o
 OBJS+=d/pokered.o
+OBJS+=d/katakana.o
+OBJS+=d/hiragana.o
 OBJS+=d/ebcdic37.o
 OBJS+=d/iso8859_1.o
 endif
 
+ifeq ($(USE_SYSLZ4),1)
+CFLAGS+=@LZ4_CFLAGS@
+PCLIBS+=@LZ4_LDFLAGS@
+else
 OBJS+=$(SHLR)/lz4/lz4.o
+endif
 
 ifeq (${HAVE_LIB_GMP},1)
   OBJS+=big_gmp.o

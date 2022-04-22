@@ -429,8 +429,8 @@ R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnal
 	/* if UJMP is in .plt section just skip it */
 	RBinSection *s = anal->binb.get_vsect_at (anal->binb.bin, addr);
 	if (s && s->name[0]) {
-		bool in_plt = strstr (s->name, ".plt") != NULL;
-		if (!in_plt && strstr (s->name, "_stubs") != NULL) {
+		bool in_plt = strstr (s->name, ".plt");
+		if (!in_plt && strstr (s->name, "_stubs")) {
 			/* for mach0 */
 			in_plt = true;
 		}
@@ -455,15 +455,6 @@ R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnal
 	// default case is the jump target of the unconditional jump
 	*default_case = prev_bb->jump == my_bb->addr ? prev_bb->fail : prev_bb->jump;
 
-	RAnalOp tmp_aop = {0};
-	ut8 *bb_buf = calloc (1, prev_bb->size);
-	if (!bb_buf) {
-		return false;
-	}
-	// search for a cmp register with a reasonable size
-	anal->iob.read_at (anal->iob.io, prev_bb->addr, (ut8 *) bb_buf, prev_bb->size);
-	isValid = false;
-
 	RAnalHint *hint = r_anal_hint_get (anal, addr);
 	if (hint) {
 		ut64 val = hint->val;
@@ -473,6 +464,15 @@ R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnal
 			return true;
 		}
 	}
+
+	RAnalOp tmp_aop = {0};
+	ut8 *bb_buf = calloc (1, prev_bb->size);
+	if (!bb_buf) {
+		return false;
+	}
+	// search for a cmp register with a reasonable size
+	anal->iob.read_at (anal->iob.io, prev_bb->addr, (ut8 *) bb_buf, prev_bb->size);
+	isValid = false;
 
 	RRegItem *cmp_reg = NULL;
 	for (i = prev_bb->ninstr - 1; i >= 0; i--) {

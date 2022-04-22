@@ -9,6 +9,8 @@
 #include <r_util/r_assert.h>
 #include "./anal_arm_hacks.inc"
 
+typedef char RStringShort[32];
+
 /* arm64 */
 #define IMM64(x) (ut64)(insn->detail->arm64.operands[x].imm)
 #define INSOP64(x) insn->detail->arm64.operands[x]
@@ -1619,11 +1621,16 @@ static int analop64_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int l
 		FPOPCALL ("/");
 		break;
 	case ARM64_INS_SDIV:
-		OPCALL_SIGN ("/", REGBITS64 (1));
+		r_strbuf_setf (&op->esil, "%s,!,?{,0,%s,=,}{,", REG64 (2), REG64 (0));
+		OPCALL_SIGN ("~/", REGBITS64 (1));
+		r_strbuf_appendf (&op->esil, ",}");
 		break;
 	case ARM64_INS_UDIV:
 		/* TODO: support WZR XZR to specify 32, 64bit op */
-		OPCALL ("/");
+		// arm64 does not have a div-by-zero exception, just quietly sets R0 to 0
+		r_strbuf_setf (&op->esil, "%s,!,?{,0,%s,=,}{,", REG64 (2), REG64 (0));
+		OPCALL("/");
+		r_strbuf_appendf (&op->esil, ",}");
 		break;
 #if CS_API_MAJOR > 4
 	case ARM64_INS_BRAA:
@@ -1940,10 +1947,24 @@ static int analop64_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int l
 	case ARM64_INS_STXRB:
 	case ARM64_INS_STXRH:
 	case ARM64_INS_STXR:
-	{
-		int size = (insn->id == ARM64_INS_STXRB)
-		    ? 1: (insn->id == ARM64_INS_STXRH)
-		    ? 2: REGSIZE64 (1);
+	case ARM64_INS_STLXR:
+	case ARM64_INS_STLXRH:
+	case ARM64_INS_STLXRB:
+	{	
+		int size = REGSIZE64 (1);
+		switch (insn->id) {
+			case ARM64_INS_STLXRB:
+			case ARM64_INS_STXRB:
+				size = 1;
+				break;
+			case ARM64_INS_STLXRH:
+			case ARM64_INS_STXRH:
+				size = 2;
+				break;
+			default:
+				size = 8;
+				break;
+		}
 		r_strbuf_setf (&op->esil, "0,%s,=,%s,%s,%"PFMT64d",+,=[%d]",
 			REG64 (0), REG64 (1), MEMBASE64 (1), MEMDISP64 (1), size);
 		break;
@@ -2109,7 +2130,7 @@ static int analop64_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int l
 	{
 		int disp = (int)MEMDISP64 (2);
 		char sign = disp>=0?'+':'-';
-		ut64 abs = disp>=0? MEMDISP64 (2): -MEMDISP64 (2);
+		ut64 abs = disp>=0? MEMDISP64 (2): (ut64)(-MEMDISP64 (2));
 		int size = REGSIZE64 (0);
 		// Pre-index case
 		// x2,x8,32,+,=[8],x3,x8,32,+,8,+,=[8]
@@ -2349,14 +2370,14 @@ static int analop64_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int l
 #define MATH32_NEG(opchar) arm32math(a, op, addr, buf, len, handle, insn, pcdelta, str, opchar, 1)
 #define MATH32AS(opchar) arm32mathaddsub(a, op, addr, buf, len, handle, insn, pcdelta, str, opchar)
 
-static void arm32math(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, csh *handle, cs_insn *insn, int pcdelta, char(*str)[32], const char *opchar, int negate) {
+static void arm32math(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, csh *handle, cs_insn *insn, int pcdelta, RStringShort str[32], const char *opchar, int negate) {
 	const char *dest = ARG(0);
 	const char *op1;
 	const char *op2;
 	bool rotate_imm = OPCOUNT() > 3;
 	if (OPCOUNT() > 2) {
-		 op1 = ARG(1);
-		 op2 = ARG(2);
+		op1 = ARG(1);
+		op2 = ARG(2);
 	} else {
 		op1 = dest;
 		op2 = ARG(1);
@@ -2387,7 +2408,7 @@ static void arm32math(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len,
 	}
 }
 
-static void arm32mathaddsub(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, csh *handle, cs_insn *insn, int pcdelta, char(*str)[32], const char *opchar) {
+static void arm32mathaddsub(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, csh *handle, cs_insn *insn, int pcdelta, RStringShort str[32], const char *opchar) {
 	const char *dst = ARG (0);
 	const char *src;
 	bool noflags = false;
@@ -2413,7 +2434,8 @@ static void arm32mathaddsub(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, in
 static int analop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, csh *handle, cs_insn *insn, bool thumb) {
 	int i;
 	const char *postfix = NULL;
-	char str[32][32];
+	// char str[32][32];
+	RStringShort str[32] = {0};
 	int msr_flags;
 	int pcdelta = (thumb? 4: 8);
 	ut32 mask = UT32_MAX;
@@ -2718,7 +2740,7 @@ r6,r5,r4,3,sp,[*],12,sp,+=
 		}
 		if (OPCOUNT() == 2) {
 			if (ISMEM(1) && !HASMEMINDEX(1)) {
-				int disp = MEMDISP(1);
+				int disp = MEMDISP (1);
 				char sign = disp>=0?'+':'-';
 				disp = disp>=0?disp:-disp;
 				r_strbuf_appendf (&op->esil, "%s,0x%x,%s,%c,0xffffffff,&,=[%d]",
@@ -3909,15 +3931,17 @@ jmp $$ + 4 + ( [delta] * 2 )
 	case ARM_INS_MOV:
 		if (REGID(0) == ARM_REG_PC) {
 			if (REGID(1) == ARM_REG_LR) {
-				op->type = R_ANAL_OP_TYPE_RET;
+				op->type = op->cond == R_ANAL_COND_AL ? R_ANAL_OP_TYPE_RET : R_ANAL_OP_TYPE_CRET;
 			} else {
-				op->type = R_ANAL_OP_TYPE_UJMP;
+				op->type = op->cond == R_ANAL_COND_AL ? R_ANAL_OP_TYPE_UJMP : R_ANAL_OP_TYPE_UCJMP;
 			}
+		} else {
+			op->type = op->cond == R_ANAL_COND_AL ? R_ANAL_OP_TYPE_MOV : R_ANAL_OP_TYPE_CMOV;
 		}
 		if (ISIMM(1)) {
 			op->val = IMM(1);
 		}
-		/* fall-thru */
+		break;
 	case ARM_INS_MOVT:
 	case ARM_INS_MOVW:
 	case ARM_INS_VMOVL:
@@ -4015,7 +4039,7 @@ jmp $$ + 4 + ( [delta] * 2 )
 		if (REGBASE(1) == ARM_REG_FP) {
 			op->stackop = R_ANAL_STACK_SET;
 			op->stackptr = 0;
-			op->ptr = -MEMDISP(1);
+			op->ptr = (ut64)-MEMDISP (1);
 		}
 		break;
 	case ARM_INS_SXTB:
@@ -4063,15 +4087,15 @@ jmp $$ + 4 + ( [delta] * 2 )
 		if (REGBASE(1) == ARM_REG_FP) {
 			op->stackop = R_ANAL_STACK_GET;
 			op->stackptr = 0;
-			op->ptr = -MEMDISP(1);
+			op->ptr = -MEMDISP (1);
 		} else if (REGBASE(1) == ARM_REG_PC) {
-			op->ptr = (addr & ~3LL) + (thumb? 4: 8) + MEMDISP(1);
+			op->ptr = (addr & ~3LL) + (thumb? 4: 8) + MEMDISP (1);
 			op->refptr = 4;
 			if (REGID(0) == ARM_REG_PC && insn->detail->arm.cc != ARM_CC_AL) {
 				//op->type = R_ANAL_OP_TYPE_MCJMP;
 				op->type = R_ANAL_OP_TYPE_UCJMP;
 				op->fail = addr+op->size;
-				op->jump = ((addr & ~3LL) + (thumb? 4: 8) + MEMDISP(1)) & UT64_MAX;
+				op->jump = ((addr & ~3LL) + (thumb? 4: 8) + MEMDISP (1)) & UT64_MAX;
 				op->ireg = r_str_getf (cs_reg_name (handle, INSOP (1).mem.index));
 				break;
 			}
@@ -4193,10 +4217,11 @@ jmp $$ + 4 + ( [delta] * 2 )
 	if (found) {
 		insn->detail->arm.cc = itcond;
 		insn->detail->arm.update_flags = 0;
+		free (op->mnemonic);
 		op->mnemonic = r_str_newf ("%s%s%s%s",
 			r_anal_optype_to_string (op->type),
 			cc_name (itcond),
-			insn->op_str[0]?" ":"",
+			insn->op_str[0]? " ": "",
 			insn->op_str);
 		op->cond = itcond;
 	}
@@ -4456,7 +4481,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, RAn
 		if (mask & R_ANAL_OP_MASK_DISASM) {
 			op->mnemonic = r_str_newf ("%s%s%s",
 				insn->mnemonic,
-				insn->op_str[0]?" ":"",
+				insn->op_str[0]? " ": "",
 				insn->op_str);
 		}
 		//bool thumb = cs_insn_group (handle, insn, ARM_GRP_THUMB);

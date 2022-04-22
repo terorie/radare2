@@ -11,7 +11,6 @@
 #include "../../../shlr/java/ops.h"
 #include "../../../shlr/java/class.h"
 #include "../../../shlr/java/code.h"
-#include "../../../shlr/java/dsojson.h"
 
 #define DO_THE_DBG 0
 #undef IFDBG
@@ -582,7 +581,7 @@ static int r_cmd_java_get_cp_bytes_and_write(RCore *core, RBinJavaObj *obj, ut16
 		bin_buffer = n_file_sz > 0? malloc (n_file_sz): NULL;
 		if (bin_buffer) {
 			memset (bin_buffer, 0, n_file_sz);
-			res = n_file_sz == r_io_read_at (core->io, obj->loadaddr, bin_buffer, n_file_sz)? true: false;
+			res = (n_file_sz == r_io_read_at (core->io, obj->loadaddr, bin_buffer, n_file_sz))? true: false;
 			if (res == true) {
 				res = r_cmd_java_reload_bin_from_buf (
 					core, obj, bin_buffer, n_file_sz);
@@ -1534,14 +1533,14 @@ static int r_cmd_java_print_all_definitions(RAnal *anal) {
 	r_list_foreach (obj_list, iter, obj) {
 		r_cmd_java_print_class_definitions (obj);
 	}
+	r_list_free (obj_list);
 	return true;
 }
 
 static int r_cmd_java_print_json_definitions(RBinJavaObj *obj) {
-	DsoJsonObj *json_obj = r_bin_java_get_bin_obj_json (obj);
-	char *str = dso_json_obj_to_str (json_obj);
-	dso_json_obj_del (json_obj); // XXX memleak
-	r_cons_println (str);
+	char *s = r_bin_java_get_bin_obj_json (obj);
+	r_cons_println (s);
+	free (s);
 	return true;
 }
 
@@ -1578,6 +1577,7 @@ static int r_cmd_java_print_class_definitions(RBinJavaObj *obj) {
 			ut64 *addr = r_list_get_n (the_moffsets, idx);
 			str = r_list_get_n (the_methods, idx);
 			r_cons_printf ("  %s; // @0x%04" PFMT64x "\n", str, *addr);
+			free (str);
 			idx++;
 		}
 	}

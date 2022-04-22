@@ -1,4 +1,4 @@
-/* radare2 - LGPL - Copyright 2009-2021 - pancake */
+/* radare2 - LGPL - Copyright 2009-2022 - pancake */
 
 #include <r_core.h>
 #include <r_socket.h>
@@ -593,7 +593,7 @@ static ut64 num_callback(RNum *userptr, const char *str, int *ok) {
 		if (ok) {
 			*ok = 1;
 		}
-		ut8 buf[sizeof (ut64)] = R_EMPTY;
+		ut8 buf[sizeof (ut64)] = {0};
 		(void)r_io_read_at (core->io, n, buf, R_MIN (sizeof (buf), refsz));
 		switch (refsz) {
 		case 8:
@@ -998,7 +998,7 @@ static const char *radare_argv[] = {
 	"db?", "dbi", "dbi.", "dbix", "dbic", "dbie", "dbid", "dbis", "dbite", "dbitd", "dbits", "dbh", "dbh-",
 	"dbt", "dbt*", "dbt=", "dbtv", "dbtj", "dbta", "dbte", "dbtd", "dbts", "dbx", "dbw",
 	"dc?", "dc", "dca", "dcb", "dcc", "dccu", "dcf", "dck", "dcp", "dcr", "dcs", "dcs*", "dct", "dcu", "dcu.",
-	"dd?", "dd", "dd-", "dd*", "dds", "ddd", "ddr", "ddw",
+	"dd?", "dd", "dd-", "dd+", "dd*", "dds", "ddd", "ddr", "ddw",
 	"de",
 	"dg",
 	"dH",
@@ -1216,7 +1216,7 @@ static void autocomplete_alias(RLineCompletion *completion, RCmd *cmd, const cha
 		const char *k = it->data;
 		const RCmdAliasVal *val = r_cmd_alias_get (cmd, k);
 		/* Skip aliases that don't match given data/command setting */
-		if (val->is_data != is_data) {
+		if (!val || val->is_data != is_data) {
 			continue;
 		}
 
@@ -1231,23 +1231,25 @@ static void autocomplete_alias(RLineCompletion *completion, RCmd *cmd, const cha
 		/* If only 1 possible completion, use it */
 		const char *k = r_list_pop (alias_match);
 		const RCmdAliasVal *val = r_cmd_alias_get (cmd, k);
-		const char *v = (char *)val->data;
-
-		r_cons_printf ("$%s=%s\n", k, v);
-		r_cons_flush ();
-		char *completed_alias = r_str_newf ("$%s", k);
-		r_line_completion_push (completion, completed_alias);
-		free (completed_alias);
+		if (val) {
+			const char *v = (char *)val->data;
+			r_cons_printf ("$%s=%s\n", k, v);
+			r_cons_flush ();
+			char *completed_alias = r_str_newf ("$%s", k);
+			r_line_completion_push (completion, completed_alias);
+			free (completed_alias);
+		}
 	} else if (match_count > 1) {
 		/* If multiple possible completions, show them */
 		r_list_foreach_iter (alias_match, it) {
 			const char *k = it->data;
 			const RCmdAliasVal *val = r_cmd_alias_get (cmd, k);
-			const char *v = (char *)val->data;
-
-			char *line = r_str_newf ("$%s=%s", k, v);
-			r_line_completion_push (completion, line);
-			free (line);
+			if (val) {
+				const char *v = (char *)val->data;
+				char *line = r_str_newf ("$%s=%s", k, v);
+				r_line_completion_push (completion, line);
+				free (line);
+			}
 		}
 	}
 	/* If 0 possible completions, do nothing */
@@ -1258,10 +1260,18 @@ static void autocomplete_process_path(RLineCompletion *completion, const char *s
 	char *lpath = NULL, *dirname = NULL , *basename = NULL;
 	char *home = NULL, *filename = NULL, *p = NULL;
 	int n = 0;
+	bool is_pipe = false; // currently unused, might help complete without space after '>'
 
 	if (!path) {
 		goto out;
 	}
+
+#if 0
+	if (path[0] == '>') {
+		is_pipe = true;
+		path++;
+	}
+#endif
 
 	lpath = r_str_new (path);
 #if __WINDOWS__
@@ -1314,8 +1324,10 @@ static void autocomplete_process_path(RLineCompletion *completion, const char *s
 			if (*filename == '.') {
 				continue;
 			}
-			if (!basename[0] || !strncmp (filename, basename, n))  {
-				char *tmpstring = r_str_newf ("%s%s", dirname, filename);
+			if (!basename[0] || !strncmp (filename, basename, n)) {
+				char *tmpstring = r_str_newf ("%s%s%s", is_pipe? ">": "",
+						dirname, filename);
+
 				if (r_file_is_directory (tmpstring)) {
 					char *s = r_str_newf ("%s%s", tmpstring, R_SYS_DIR);
 					r_line_completion_push (completion, s);
@@ -1334,15 +1346,23 @@ out:
 	free (basename);
 }
 
-static void autocompleteFilename(RLineCompletion *completion, RLineBuffer *buf, RCmd *cmd, char **extra_paths, int narg) {
+static void autocomplete_filename(RLineCompletion *completion, RLineBuffer *buf, RCmd *cmd, char **extra_paths, int narg) {
 	char *args = NULL, *input = NULL;
 	int n = 0, i = 0;
 	char *pipe = strchr (buf->data, '>');
+
 	if (pipe) {
-		args = r_str_new (pipe + 1);
+		args = r_str_new (pipe);
+#if 0
+		if (pipe[1] == ' ') {
+			// currently unreachable
+			narg++;
+		}
+#endif
 	} else {
 		args = r_str_new (buf->data);
 	}
+
 	if (!args) {
 		goto out;
 	}
@@ -1875,7 +1895,9 @@ R_API void r_core_autocomplete(R_NULLABLE RCore *core, RLineCompletion *completi
 		return;
 	}
 	if (r_config_get_b (core->config, "scr.prompt.tabhelp")) {
-		if (buf->data[0] && buf->data[0] != '$' && !strchr (buf->data, ' ')) {
+		if (buf->data[0] != '$' // handle aliases below
+				&& strncmp(buf->data, "#!", 2) // rlang help fails
+				&& !strchr (buf->data, ' ')) {
 			r_line_completion_clear (completion);
 			char *s = r_core_cmd_strf (core, "%s?", buf->data);
 			eprintf ("%s%s\n%s", core->cons->line->prompt, buf->data, s);
@@ -1886,17 +1908,42 @@ R_API void r_core_autocomplete(R_NULLABLE RCore *core, RLineCompletion *completi
 	r_line_completion_clear (completion);
 	char *pipe = strchr (buf->data, '>');
 	char *ptr = strchr (buf->data, '@');
-	if (pipe && ptr && *ptr && strchr (ptr + 1, ' ') && buf->data + buf->index >= pipe) {
-		autocompleteFilename (completion, buf, core->rcmd, NULL, 1);
-	} else if (ptr && strchr (ptr + 1, ' ') && buf->data + buf->index >= ptr) {
-		int sdelta, n;
-		ptr = (char *)r_str_trim_head_ro (ptr + 1);
-		n = strlen (ptr);//(buf->data+sdelta);
-		sdelta = (int)(size_t)(ptr - buf->data);
-		r_flag_foreach_prefix (core->flags, buf->data + sdelta, n, add_argv, completion);
+
+	if (pipe) {
+		/* XXX this doesn't handle filenames with spaces */
+		// accept "> " and ">"
+		char *pipe_space = pipe[1] == ' '
+			? strchr (pipe+2, ' ')
+			: strchr (pipe, ' ');
+		bool should_complete = buf->data + buf->index >= pipe;
+		if (pipe_space) {
+			should_complete &= buf->data + buf->index < pipe_space;
+		}
+		if (should_complete) {
+			if (pipe[1] != ' '){
+				r_line_completion_push (completion, ">");
+				return;
+			}
+			autocomplete_filename (completion, buf, core->rcmd, NULL, 1);
+		}
+	} else if (ptr) {
+		char *ptr_space = ptr[1] == ' '
+			? strchr (ptr+2, ' ')
+			: strchr (ptr, ' ');
+		bool should_complete = buf->data + buf->index >= ptr;
+		if (ptr_space) {
+			should_complete &= buf->data + buf->index < ptr_space;
+		}
+		if (should_complete) {
+			if (ptr[1] != ' ') {
+				r_line_completion_push (completion, "@");
+				return;
+			}
+			autocomplete_flags (core, completion, ptr+2);
+		}
 	} else if (!strncmp (buf->data, "#!pipe ", 7)) {
 		if (strchr (buf->data + 7, ' ')) {
-			autocompleteFilename (completion, buf, core->rcmd, NULL, 2);
+			autocomplete_filename (completion, buf, core->rcmd, NULL, 2);
 		} else {
 			int chr = 7;
 			ADDARG ("node");
@@ -1908,7 +1955,7 @@ R_API void r_core_autocomplete(R_NULLABLE RCore *core, RLineCompletion *completi
 		}
 	} else if (!strncmp (buf->data, "ec ", 3)) {
 		if (strchr (buf->data + 3, ' ')) {
-			autocompleteFilename (completion, buf, core->rcmd, NULL, 2);
+			autocomplete_filename (completion, buf, core->rcmd, NULL, 2);
 		} else {
 			int chr = 3;
 			ADDARG ("comment");
@@ -2062,10 +2109,10 @@ R_API void r_core_autocomplete(R_NULLABLE RCore *core, RLineCompletion *completi
 		if (core->anal->zign_path && core->anal->zign_path[0]) {
 			char *zignpath = r_file_abspath (core->anal->zign_path);
 			char *paths[2] = { zignpath, NULL };
-			autocompleteFilename (completion, buf, core->rcmd, paths, 1);
+			autocomplete_filename (completion, buf, core->rcmd, paths, 1);
 			free (zignpath);
 		} else {
-			autocompleteFilename (completion, buf, core->rcmd, NULL, 1);
+			autocomplete_filename (completion, buf, core->rcmd, NULL, 1);
 		}
 	} else if (find_e_opts (core, completion, buf)) {
 		return;
@@ -2286,7 +2333,14 @@ R_API char *r_core_anal_hasrefs_to_depth(RCore *core, ut64 value, PJ *pj, int de
 	}
 	ut64 type = r_core_anal_address (core, value);
 	RBinSection *sect = value? r_bin_get_section_at (r_bin_cur_object (core->bin), value, true): NULL;
-	if(! ((type & R_ANAL_ADDR_TYPE_HEAP) || (type & R_ANAL_ADDR_TYPE_STACK)) ) {
+	if ((int)value < 0 && ((int)value > -0xffff)) {
+		ut64 dst = core->offset + (st32)value;
+		if (r_io_is_valid_offset (core->io, dst, false)) {
+			r_strbuf_appendf (s, " rptr(%d)=0x%08"PFMT64x" ", (int)value, dst);
+			value = dst;
+		}
+	}
+	if (! ((type & R_ANAL_ADDR_TYPE_HEAP) || (type & R_ANAL_ADDR_TYPE_STACK)) ) {
 		// Do not repeat "stack" or "heap" words unnecessarily.
 		if (sect && sect->name[0]) {
 			if (pj) {
@@ -2655,7 +2709,7 @@ static void __init_autocomplete_default(RCore* core) {
 		"#!rust", "#!zig", "#!pipe", "#!python", "aeli", "arp", "arpg", "dmd", "drp", "drpg", "o",
 		"idp", "idpi", "L", "obf", "o+", "oc", "r2", "rabin2", "rasm2", "rahash2", "rax2",
 		"rafind2", "cd", "ls", "on", "wf", "rm", "wF", "wp", "Sd", "Sl", "to", "pm",
-		"/m", "zos", "zfd", "zfs", "zfz", "cat", "wta", "wtf", "wxf", "dml",
+		"/m", "zos", "zfd", "zfs", "zfz", "cat", "wta", "wtf", "wxf", "dml", "dd", "dd+",
 		"vi", "vim", "nvi", "neovim", "nvim", "nano",
 #if __WINDOWS__
 		"notepad",
@@ -2725,7 +2779,13 @@ static const char *colorfor_cb(void *user, ut64 addr, ut8 ch, bool verbose) {
 }
 
 static char *hasrefs_cb(void *user, ut64 addr, int mode) {
-	return r_core_anal_hasrefs ((RCore *)user, addr, mode);
+	RCore *core = (RCore *)user;
+	if (mode) {
+		return r_core_anal_hasrefs ((RCore *)user, addr, mode);
+	}
+	core->offset = addr;
+	char *res = r_core_anal_hasrefs ((RCore *)user, addr, mode);
+	return res;
 }
 
 static const char *get_section_name(void *user, ut64 addr) {
@@ -3120,7 +3180,6 @@ R_API void r_core_fini(RCore *c) {
 	r_event_free (c->ev);
 	free (c->cmdlog);
 	free (c->lastsearch);
-	R_FREE (c->cons->pager);
 	r_list_free (c->cmdqueue);
 	free (c->lastcmd);
 	free (c->stkcmd);
@@ -3196,14 +3255,16 @@ R_API bool r_core_prompt_loop(RCore *r) {
 
 static int prompt_flag(RCore *r, char *s, size_t maxlen) {
 	const char DOTS[] = "...";
-	const RFlagItem *f = r_flag_get_at (r->flags, r->offset, false);
+	const RFlagItem *f = r_flag_get_at (r->flags, r->offset, true);
 	if (!f) {
 		return false;
 	}
 	if (f->offset < r->offset) {
-		snprintf (s, maxlen, "%s + %" PFMT64u, f->name, r->offset - f->offset);
+		snprintf (s, maxlen, "0x%08" PFMT64x " | %s+0x%" PFMT64x,
+				r->offset, f->name, r->offset - f->offset);
 	} else {
-		snprintf (s, maxlen, "%s", f->name);
+		snprintf (s, maxlen, "0x%08" PFMT64x " | %s",
+				r->offset, f->name);
 	}
 	if (strlen (s) > maxlen - sizeof (DOTS)) {
 		s[maxlen - sizeof (DOTS) - 1] = '\0';
@@ -3319,6 +3380,7 @@ R_API void r_core_cmd_queue_wait(RCore *core) {
 		if (cmd) {
 			r_core_cmd0 (core, cmd);
 			r_cons_flush ();
+			free (cmd);
 		}
 		r_sys_usleep (100);
 	}
@@ -3367,6 +3429,7 @@ R_API int r_core_prompt_exec(RCore *r) {
 			break;
 		}
 		ret = r_core_cmd (r, cmd, true);
+		free (cmd);
 		if (ret < 0) {
 			if (r->cons && r->cons->line && r->cons->line->zerosep) {
 				r_cons_zero ();
@@ -3376,7 +3439,6 @@ R_API int r_core_prompt_exec(RCore *r) {
 		}
 		r->rc = r->num->value;
 		// int ret = r_core_cmd (r, cmd, true);
-		free (cmd);
 		if (r->cons && r->cons->context->use_tts) {
 			const char *buf = r_cons_get_buffer ();
 			if (buf && *buf) {
@@ -3916,6 +3978,11 @@ R_API RBuffer *r_core_syscall(RCore *core, const char *name, const char *args) {
 	}
 
 	int num = r_syscall_get_num (core->anal->syscall, name);
+	/* FIXME: hack for r_syscall_get_num() returning 128 instead of 0 for x86.
+	 * this is currently held together with duct tape and hope */
+	if (num == 128) {
+		num = 0;
+	}
 
 	//bits check
 	switch (core->rasm->bits) {
@@ -3937,10 +4004,10 @@ R_API RBuffer *r_core_syscall(RCore *core, const char *name, const char *args) {
 	}
 
 	snprintf (code, sizeof (code),
-		"sc@syscall(%d);\n"
-		"main@global(0) { sc(%s);\n"
-		":int3\n" /// XXX USE trap
-		"}\n", num, args);
+			"sc@syscall(%d);\n"
+			"main@global(0,1024) { sc(%s);\n"
+			":int3\n"
+			"}\n", num, args);
 	r_egg_reset (core->egg);
 	// TODO: setup arch/bits/os?
 	r_egg_load (core->egg, code, 0);

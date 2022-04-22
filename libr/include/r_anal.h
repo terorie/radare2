@@ -416,21 +416,21 @@ typedef enum {
 	R_ANAL_OP_TYPE_NULL  = 0,
 	R_ANAL_OP_TYPE_JMP   = 1,  /* mandatory jump */
 	R_ANAL_OP_TYPE_UJMP  = 2,  /* unknown jump (register or so) */
-	R_ANAL_OP_TYPE_RJMP  = R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_UJMP,
-	R_ANAL_OP_TYPE_IJMP  = R_ANAL_OP_TYPE_IND | R_ANAL_OP_TYPE_UJMP,
-	R_ANAL_OP_TYPE_IRJMP = R_ANAL_OP_TYPE_IND | R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_UJMP,
-	R_ANAL_OP_TYPE_CJMP  = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_JMP,  /* conditional jump */
-	R_ANAL_OP_TYPE_RCJMP = R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_CJMP,  /* conditional jump register */
-	R_ANAL_OP_TYPE_MJMP  = R_ANAL_OP_TYPE_MEM | R_ANAL_OP_TYPE_JMP,   /* memory jump */
-	R_ANAL_OP_TYPE_MCJMP = R_ANAL_OP_TYPE_MEM | R_ANAL_OP_TYPE_CJMP,  /* memory conditional jump */
-	R_ANAL_OP_TYPE_UCJMP = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_UJMP, /* conditional unknown jump */
+	R_ANAL_OP_TYPE_RJMP  = R_ANAL_OP_TYPE_UJMP| R_ANAL_OP_TYPE_REG,
+	R_ANAL_OP_TYPE_UCJMP = R_ANAL_OP_TYPE_UJMP | R_ANAL_OP_TYPE_COND, /* conditional unknown jump */
+	R_ANAL_OP_TYPE_IJMP  = R_ANAL_OP_TYPE_UJMP | R_ANAL_OP_TYPE_IND,
+	R_ANAL_OP_TYPE_IRJMP = R_ANAL_OP_TYPE_UJMP | R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_IND,
+	R_ANAL_OP_TYPE_CJMP  = R_ANAL_OP_TYPE_JMP | R_ANAL_OP_TYPE_COND,  /* conditional jump */
+	R_ANAL_OP_TYPE_MJMP  = R_ANAL_OP_TYPE_JMP | R_ANAL_OP_TYPE_MEM,   /* memory jump */
+	R_ANAL_OP_TYPE_RCJMP = R_ANAL_OP_TYPE_CJMP | R_ANAL_OP_TYPE_REG,  /* conditional jump register */
+	R_ANAL_OP_TYPE_MCJMP = R_ANAL_OP_TYPE_CJMP | R_ANAL_OP_TYPE_MEM,  /* memory conditional jump */
 	R_ANAL_OP_TYPE_CALL  = 3,  /* call to subroutine (branch+link) */
 	R_ANAL_OP_TYPE_UCALL = 4, /* unknown call (register or so) */
-	R_ANAL_OP_TYPE_RCALL = R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_UCALL,
-	R_ANAL_OP_TYPE_ICALL = R_ANAL_OP_TYPE_IND | R_ANAL_OP_TYPE_UCALL,
-	R_ANAL_OP_TYPE_IRCALL= R_ANAL_OP_TYPE_IND | R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_UCALL,
-	R_ANAL_OP_TYPE_CCALL = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_CALL, /* conditional call to subroutine */
-	R_ANAL_OP_TYPE_UCCALL= R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_UCALL, /* conditional unknown call */
+	R_ANAL_OP_TYPE_RCALL = R_ANAL_OP_TYPE_UCALL | R_ANAL_OP_TYPE_REG,
+	R_ANAL_OP_TYPE_ICALL = R_ANAL_OP_TYPE_UCALL | R_ANAL_OP_TYPE_IND,
+	R_ANAL_OP_TYPE_IRCALL= R_ANAL_OP_TYPE_UCALL | R_ANAL_OP_TYPE_REG | R_ANAL_OP_TYPE_IND,
+	R_ANAL_OP_TYPE_CCALL = R_ANAL_OP_TYPE_CALL | R_ANAL_OP_TYPE_COND, /* conditional call to subroutine */
+	R_ANAL_OP_TYPE_UCCALL= R_ANAL_OP_TYPE_UCALL | R_ANAL_OP_TYPE_COND, /* conditional unknown call */
 	R_ANAL_OP_TYPE_RET   = 5, /* returns from subroutine */
 	R_ANAL_OP_TYPE_CRET  = R_ANAL_OP_TYPE_COND | R_ANAL_OP_TYPE_RET, /* conditional return from subroutine */
 	R_ANAL_OP_TYPE_ILL   = 6,  /* illegal instruction // trap */
@@ -810,6 +810,15 @@ R_DEPRECATE typedef struct r_anal_var_field_t {
 	st64 delta;
 	bool field;
 } RAnalVarField;
+// TO DEPRECATE
+// Use r_anal_get_functions_in¿() instead
+R_DEPRECATE R_API RAnalFunction *r_anal_get_fcn_in(RAnal *anal, ut64 addr, int type);
+R_DEPRECATE R_API RAnalFunction *r_anal_get_fcn_in_bounds(RAnal *anal, ut64 addr, int type);
+R_API R_DEPRECATE RList/*<RAnalVar *>*/ *r_anal_var_all_list(RAnal *anal, RAnalFunction *fcn);
+R_API R_DEPRECATE RList/*<RAnalVarField *>*/ *r_anal_function_get_var_fields(RAnalFunction *fcn, int kind);
+// There could be multiple vars used in multiple functions. Use r_anal_get_functions_in()+r_anal_function_get_vars_used_at() instead.
+R_API R_DEPRECATE RAnalVar *r_anal_get_used_function_var(RAnal *anal, ut64 addr);
+
 
 typedef enum {
 	R_ANAL_ACC_UNKNOWN = 0,
@@ -823,7 +832,7 @@ typedef enum {
 	R_ANAL_VAL_IMM,
 } RAnalValueType;
 
-// base+reg+regdelta*mul+delta
+// base + reg + regdelta * mul + delta
 typedef struct r_anal_value_t {
 	RAnalValueType type;
 	RAnalValueAccess access;
@@ -833,9 +842,10 @@ typedef struct r_anal_value_t {
 	st64 delta; // numeric delta
 	st64 imm; // immediate value
 	int mul; // multiplier (reg*4+base)
+	// XXX can be invalidated if regprofile changes causing an UAF
 	RRegItem *seg; // segment selector register
-	RRegItem *reg; // register / register base used (-1 if no reg)
-	RRegItem *regdelta; // register index used (-1 if no reg)
+	RRegItem *reg; // register item reference
+	RRegItem *regdelta; // register index used
 } RAnalValue;
 
 typedef enum {
@@ -905,6 +915,7 @@ typedef int (* RAnalEncode)(RAnal *anal, ut64 addr, const char *s, const ut8 *da
 typedef int (* RAnalDecode)(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *data, int len, RAnalOpMask mask);
 typedef void (* RAnalOpInit)(RAnalOp *op);
 typedef void (* RAnalOpFini)(RAnalOp *op);
+typedef bool (* RAnalUse)(RAnal *op, const char *name); // TODO: add bits and cpu too imho
 
 typedef struct r_anal_bind_t {
 	RAnal *anal;
@@ -914,6 +925,7 @@ typedef struct r_anal_bind_t {
 	RAnalDecode decode;
 	RAnalOpInit opinit;
 	RAnalOpFini opfini;
+	RAnalUse use;
 } RAnalBind;
 
 #define R_ANAL_COND_SINGLE(x) (!x->arg[1] || x->arg[0]==x->arg[1])
@@ -1556,6 +1568,7 @@ R_API int r_anal_add(RAnal *anal, RAnalPlugin *foo);
 R_API int r_anal_archinfo(RAnal *anal, int query);
 R_API bool r_anal_use(RAnal *anal, const char *name);
 R_API bool r_anal_esil_use(RAnal *anal, const char *name);
+R_API const char *r_anal_esil_trapstr(int type);
 R_API bool r_anal_set_reg_profile(RAnal *anal, const char *rp);
 R_API char *r_anal_get_reg_profile(RAnal *anal);
 R_API ut64 r_anal_get_bbaddr(RAnal *anal, ut64 addr);
@@ -1653,17 +1666,13 @@ R_API void r_anal_esil_trace_restore(RAnalEsil *esil, int idx);
 R_API void r_anal_pin_init(RAnal *a);
 R_API void r_anal_pin_fini(RAnal *a);
 R_API void r_anal_pin(RAnal *a, ut64 addr, const char *name);
-R_API void r_anal_pin_unset(RAnal *a, ut64 addr);
 R_API const char *r_anal_pin_call(RAnal *a, ut64 addr);
 R_API void r_anal_pin_list(RAnal *a);
+R_API void r_anal_pin_unset(RAnal *a, ut64 addr);
 
 /* fcn.c */
 R_API ut32 r_anal_function_cost(RAnalFunction *fcn);
 R_API int r_anal_function_count_edges(const RAnalFunction *fcn, R_NULLABLE int *ebbs);
-
-// Use r_anal_get_functions_in¿() instead
-R_DEPRECATE R_API RAnalFunction *r_anal_get_fcn_in(RAnal *anal, ut64 addr, int type);
-R_DEPRECATE R_API RAnalFunction *r_anal_get_fcn_in_bounds(RAnal *anal, ut64 addr, int type);
 
 R_API RAnalFunction *r_anal_get_function_byname(RAnal *anal, const char *name);
 
@@ -1707,6 +1716,11 @@ R_API RAnalBlock *r_anal_function_bbget_at(RAnal *anal, RAnalFunction *fcn, ut64
 R_API bool r_anal_function_bbadd(RAnalFunction *fcn, RAnalBlock *bb);
 R_API int r_anal_function_resize(RAnalFunction *fcn, int newsize);
 R_API bool r_anal_function_purity(RAnalFunction *fcn);
+R_API int r_anal_function_instrcount(RAnalFunction *fcn);
+R_API bool r_anal_function_islineal(RAnalFunction *fcn);
+R_API const char *r_anal_pin_get(RAnal *a, const char *name);
+R_API const char *r_anal_pin_at(RAnal *a, ut64 addr);
+R_API bool r_anal_pin_set(RAnal *a, const char *name, const char *cmd);
 
 typedef bool (* RAnalRefCmp)(RAnalRef *ref, void *data);
 R_API RList *r_anal_ref_list_new(void);
@@ -1747,9 +1761,6 @@ R_API bool r_anal_function_rebase_vars(RAnal *a, RAnalFunction *fcn);
 R_API st64 r_anal_function_get_var_stackptr_at(RAnalFunction *fcn, st64 delta, ut64 addr);
 R_API const char *r_anal_function_get_var_reg_at(RAnalFunction *fcn, st64 delta, ut64 addr);
 R_API R_BORROW RPVector *r_anal_function_get_vars_used_at(RAnalFunction *fcn, ut64 op_addr);
-
-// There could be multiple vars used in multiple functions. Use r_anal_get_functions_in()+r_anal_function_get_vars_used_at() instead.
-R_API R_DEPRECATE RAnalVar *r_anal_get_used_function_var(RAnal *anal, ut64 addr);
 
 R_API bool r_anal_var_rename(RAnalVar *var, const char *new_name, bool verbose);
 R_API void r_anal_var_set_type(RAnalVar *var, const char *type);
@@ -1841,8 +1852,6 @@ R_API void r_anal_reflines_str_free(RAnalRefStr *refstr);
 /* TODO move to r_core */
 R_API void r_anal_var_list_show(RAnal *anal, RAnalFunction *fcn, int kind, int mode, PJ* pj);
 R_API RList *r_anal_var_list(RAnal *anal, RAnalFunction *fcn, int kind);
-R_API R_DEPRECATE RList/*<RAnalVar *>*/ *r_anal_var_all_list(RAnal *anal, RAnalFunction *fcn);
-R_API R_DEPRECATE RList/*<RAnalVarField *>*/ *r_anal_function_get_var_fields(RAnalFunction *fcn, int kind);
 
 // calling conventions API
 R_API bool r_anal_cc_exist(RAnal *anal, const char *convention);
@@ -2211,10 +2220,10 @@ extern RAnalPlugin r_anal_plugin_dalvik;
 extern RAnalPlugin r_anal_plugin_ebc;
 extern RAnalPlugin r_anal_plugin_gb;
 extern RAnalPlugin r_anal_plugin_h8300;
-extern RAnalPlugin r_anal_plugin_hexagon;
 extern RAnalPlugin r_anal_plugin_i4004;
 extern RAnalPlugin r_anal_plugin_i8080;
 extern RAnalPlugin r_anal_plugin_java;
+extern RAnalPlugin r_anal_plugin_kvx;
 extern RAnalPlugin r_anal_plugin_m68k_cs;
 extern RAnalPlugin r_anal_plugin_m680x_cs;
 extern RAnalPlugin r_anal_plugin_malbolge;

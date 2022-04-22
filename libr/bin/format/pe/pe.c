@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2008-2021 nibble, pancake, inisider */
+/* radare - LGPL - Copyright 2008-2022 nibble, pancake, inisider */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -278,15 +278,13 @@ struct r_bin_pe_addr_t *PE_(check_msvcseh)(RBinPEObj *pe) {
 }
 
 struct r_bin_pe_addr_t *PE_(check_mingw)(RBinPEObj *pe) {
-	struct r_bin_pe_addr_t* entry;
 	bool sw = false;
-	ut8 b[1024];
+	ut8 b[1024] = {0};
 	size_t n = 0;
 	if (!pe || !pe->b) {
 		return 0LL;
 	}
-	entry = PE_(r_bin_pe_get_entrypoint) (pe);
-	ZERO_FILL (b);
+	struct r_bin_pe_addr_t* entry = PE_(r_bin_pe_get_entrypoint) (pe);
 	if (r_buf_read_at (pe->b, entry->paddr, b, sizeof (b)) < 0) {
 		pe_printf ("Warning: Cannot read entry at 0x%08"PFMT64x "\n", entry->paddr);
 		free (entry);
@@ -339,11 +337,11 @@ struct r_bin_pe_addr_t *PE_(check_unknow)(RBinPEObj *pe) {
 	if (!pe || !pe->b) {
 		return 0LL;
 	}
-	ut8 b[512];
+	ut8 b[512] = {0};
 	ZERO_FILL (b);
 	entry = PE_ (r_bin_pe_get_entrypoint) (pe);
 	// option2: /x 8bff558bec83ec20
-	if (r_buf_read_at (pe->b, entry->paddr, b, 512) < 1) {
+	if (r_buf_read_at (pe->b, entry->paddr, b, sizeof (b)) != sizeof (b)) {
 		pe_printf ("Warning: Cannot read entry at 0x%08"PFMT64x"\n", entry->paddr);
 		free (entry);
 		return NULL;
@@ -502,6 +500,7 @@ static int bin_pe_parse_imports(RBinPEObj* pe,
 						const char *dirPrefix = r_sys_prefix (NULL);
 						char *lower_symdllname = strdup (symdllname);
 						r_str_case (lower_symdllname, false);
+						free (filename);
 						filename = r_str_newf (R_JOIN_4_PATHS ("%s", R2_SDB_FORMAT, "dll", "%s.sdb"),
 							dirPrefix, lower_symdllname);
 						free (lower_symdllname);
@@ -537,7 +536,8 @@ static int bin_pe_parse_imports(RBinPEObj* pe,
 				if (len < 1) {
 					pe_printf ("Warning: read (import name)\n");
 					goto error;
-				} else if (!*name) {
+				}
+				if (!*name) {
 					break;
 				}
 				name[PE_NAME_LENGTH] = '\0';
@@ -1258,7 +1258,6 @@ static bool bin_pe_init_metadata_hdr(RBinPEObj* pe) {
 	// read the header after the string
 	rr = r_buf_fread_at (pe->b, metadata_directory + 16 + metadata->VersionStringLength,
 		(ut8*) (&metadata->Flags), pe->big_endian? "2S": "2s", 1);
-
 	if (rr < 1) {
 		goto fail;
 	}
@@ -1820,7 +1819,7 @@ static Var* Pe_r_bin_pe_parse_var(RBinPEObj* pe, PE_DWord* curAddr) {
 		free_Var (var);
 		return NULL;
 	}
-	if (r_buf_read_at (pe->b, *curAddr, (ut8*) var->szKey, TRANSLATION_UTF_16_LEN) < 1) {
+	if (r_buf_read_at (pe->b, *curAddr, (ut8*) var->szKey, TRANSLATION_UTF_16_LEN) != TRANSLATION_UTF_16_LEN) {
 		pe_printf ("Warning: read (Var szKey)\n");
 		free_Var (var);
 		return NULL;
@@ -3128,7 +3127,7 @@ R_API void PE_(bin_pe_parse_resource)(RBinPEObj *pe) {
 	Pe_image_resource_directory *rs_directory = pe->resource_directory;
 	ut32 curRes = 0;
 	int totalRes = 0;
-	HtUUOptions opt = { 0 };
+	HtUUOptions opt = {0};
 	HtUU *dirs = ht_uu_new_opt (&opt); //to avoid infinite loops
 	if (!dirs) {
 		return;
@@ -3247,7 +3246,7 @@ static int bin_pe_init_security(RBinPEObj *pe) {
 		}
 		free ((void *)claimed_authentihash);
 	}
-	pe->is_signed = pe->cms != NULL;
+	pe->is_signed = pe->cms;
 	return true;
 }
 

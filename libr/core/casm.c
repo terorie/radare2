@@ -208,7 +208,7 @@ R_API RList *r_core_asm_strsearch(RCore *core, const char *input, ut64 from, ut6
 				if (mode == 'a') { // check for case sensitive
 					matches = !r_str_ncasecmp (opst, tokens[matchcount], strlen (tokens[matchcount]));
 				} else if (!regexp) {
-					matches = strstr (opst, tokens[matchcount]) != NULL;
+					matches = !!strstr (opst, tokens[matchcount]);
 				} else {
 					rx = r_regex_new (tokens[matchcount], "es");
 					matches = r_regex_exec (rx, opst, 0, 0, 0) == 0;
@@ -311,7 +311,7 @@ static void add_hit_to_hits(RList* hits, ut64 addr, int len, ut8 is_valid) {
 }
 
 static int prune_hits_in_addr_range(RList *hits, ut64 addr, ut64 len, ut8 is_valid) {
-	RCoreAsmHit hit = R_EMPTY;
+	RCoreAsmHit hit = {0};
 	hit.addr = addr;
 	hit.len = len;
 	hit.valid = is_valid;

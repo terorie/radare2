@@ -40,11 +40,6 @@
 #define R_NULLABLE /* pointer can be null */
 #define R_DEPRECATE /* should not be used in new code and should/will be removed in the future */
 #define R_IFNULL(x) /* default value for the pointer when null */
-#ifdef __GNUC__
-#define R_UNUSED __attribute__((__unused__))
-#else
-#define R_UNUSED /* unused */
-#endif
 
 #ifdef R_NEW
 #undef R_NEW
@@ -461,23 +456,52 @@ static inline void *r_new_copy(int size, void *data) {
 
 #ifndef eprintf
 #define eprintf(...) fprintf (stderr, __VA_ARGS__)
-
-#define EPRINT_STR(x) eprintf (#x ": \"%s\"\n", x)
-#define EPRINT_CHAR(x) eprintf (#x ": '%c' (0x%x)\n", x, x)
-#define EPRINT_INT(x) eprintf (#x ": %d (0x%x)\n", x, x)
-#define EPRINT_BOOL(x) eprintf (#x ": %s\n", x? "true": "false")
-#define EPRINT_PTR(x) eprintf (#x ": %p\n", x)
-
-#define EPRINT_UT64(x) eprintf (#x ": %" PFMT64u " (0x%" PFMT64x ")\n", x, x)
-#define EPRINT_ST64(x) eprintf (#x ": %" PFMT64d " (0x%" PFMT64x ")\n", x, x)
-#define EPRINT_UT32(x) eprintf (#x ": %" PFMT32u " (0x%" PFMT32x ")\n", x, x)
-#define EPRINT_ST32(x) eprintf (#x ": %" PFMT32d " (0x%" PFMT32x ")\n", x, x)
-#define EPRINT_UT16(x) eprintf (#x ": %hu (0x%hx)\n", x, x)
-#define EPRINT_ST16(x) eprintf (#x ": %hd (0x%hx)\n", x, x)
-#define EPRINT_UT8(x) eprintf (#x ": %hhu (0x%hhx)\n", x, x)
-#define EPRINT_ST8(x) eprintf (#x ": %hhd (0x%hhx)\n", x, x)
 #endif
 
+#ifndef R2_DEBUG_EPRINT
+#define R2_DEBUG_EPRINT 0
+#endif
+#if !R2_DEBUG_EPRINT
+#define EPRINT_STR
+#define EPRINT_CHAR
+#define EPRINT_INT
+#define EPRINT_BOOL
+#define EPRINT_PTR
+
+#define EPRINT_UT64
+#define EPRINT_ST64
+#define EPRINT_UT32
+#define EPRINT_ST32
+#define EPRINT_UT16
+#define EPRINT_ST16
+#define EPRINT_UT8
+#define EPRINT_ST8
+#else
+/* Pass R2_NO_EPRINT_MACROS=1 as an environment variable to disable these
+ * macros at runtime. Used by r2r to prevent interference with tests. */
+#define EPRINT_VAR_WRAPPER(name, fmt, ...) {				\
+	char *eprint_env = r_sys_getenv ("R2_NO_EPRINT_MACROS");	\
+	if (!eprint_env || strcmp (eprint_env, "1")) {			\
+		eprintf (#name ": " fmt "\n", __VA_ARGS__);		\
+	}								\
+	free (eprint_env);						\
+}
+
+#define EPRINT_STR(x) EPRINT_VAR_WRAPPER (x, "\"%s\"", x)
+#define EPRINT_CHAR(x) EPRINT_VAR_WRAPPER (x, "'%c' (0x%x)", x, x)
+#define EPRINT_INT(x) EPRINT_VAR_WRAPPER (x, "%d (0x%x)", x, x)
+#define EPRINT_BOOL(x) EPRINT_VAR_WRAPPER (x, "%s", x? "true": "false")
+#define EPRINT_PTR(x) EPRINT_VAR_WRAPPER (x, "%p", x)
+
+#define EPRINT_UT64(x) EPRINT_VAR_WRAPPER (x, "%" PFMT64u " (0x%" PFMT64x ")", x, x)
+#define EPRINT_ST64(x) EPRINT_VAR_WRAPPER (x, "%" PFMT64d " (0x%" PFMT64x ")", x, x)
+#define EPRINT_UT32(x) EPRINT_VAR_WRAPPER (x, "%" PFMT32u " (0x%" PFMT32x ")", x, x)
+#define EPRINT_ST32(x) EPRINT_VAR_WRAPPER (x, "%" PFMT32d " (0x%" PFMT32x ")", x, x)
+#define EPRINT_UT16(x) EPRINT_VAR_WRAPPER (x, "%hu (0x%hx)", x, x)
+#define EPRINT_ST16(x) EPRINT_VAR_WRAPPER (x, "%hd (0x%hx)", x, x)
+#define EPRINT_UT8(x) EPRINT_VAR_WRAPPER (x, "%hhu (0x%hhx)", x, x)
+#define EPRINT_ST8(x) EPRINT_VAR_WRAPPER (x, "%hhd (0x%hhx)", x, x)
+#endif
 
 #if __APPLE__
 # if __i386__
@@ -621,7 +645,8 @@ typedef enum {
 	R_SYS_ARCH_HPPA,
 	R_SYS_ARCH_V810,
 	R_SYS_ARCH_LM32,
-	R_SYS_ARCH_RISCV
+	R_SYS_ARCH_RISCV,
+	R_SYS_ARCH_ESIL,
 } RSysArch;
 
 #define MONOTONIC_LINUX (__linux__ && _POSIX_C_SOURCE >= 199309L)
@@ -722,11 +747,7 @@ static inline void r_run_call10(void *fcn, void *arg1, void *arg2, void *arg3, v
 }
 
 #ifndef container_of
-# ifdef _MSC_VER
-#  define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
-# else
-#  define container_of(ptr, type, member) ((type *)((char *)(__typeof__(((type *)0)->member) *){ptr} - offsetof(type, member)))
-# endif
+#define container_of(ptr, type, member) (ptr? ((type *)((char *)(ptr) - r_offsetof(type, member))): NULL)
 #endif
 
 // reference counter

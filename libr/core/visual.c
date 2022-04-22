@@ -1,7 +1,6 @@
 /* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #include <r_core.h>
-#include <r_cons.h>
 
 #define NPF 5
 #define PIDX (R_ABS (core->printidx % NPF))
@@ -775,11 +774,19 @@ R_API void r_core_visual_prompt_input(RCore *core) {
 	r_cons_show_cursor (true);
 	core->vmode = false;
 
+	int curbs = core->blocksize;
+	if (autoblocksize) {
+		r_core_block_size (core, obs);
+	}
 	backup_current_addr (core, &addr, &bsze, &newaddr);
 	do {
 		ret = r_core_visual_prompt (core);
 	} while (ret);
 	restore_current_addr (core, addr, bsze, newaddr);
+	if (autoblocksize) {
+		obs = core->blocksize;
+		r_core_block_size (core, curbs);
+	}
 
 	r_cons_show_cursor (false);
 	core->vmode = true;
@@ -2111,9 +2118,19 @@ static bool insert_mode_enabled(RCore *core) {
 	}
 	if (core->print->col == 2) {
 		/* ascii column */
-		if (IS_PRINTABLE (ch)) {
-			r_core_cmdf (core, "\"w %c\" @ $$+%d", ch, core->print->cur);
+		switch (ch) {
+		case 0x1b: // ESC
+			core->print->col = 0;
+			break;
+		case ' ':
+			r_core_cmdf (core, "wx 20 @ $$+%d", core->print->cur);
 			core->print->cur++;
+			break;
+		default:
+			if (IS_PRINTABLE (ch)) {
+				r_core_cmdf (core, "\"w %c\" @ $$+%d", ch, core->print->cur);
+				core->print->cur++;
+			}
 		}
 		return true;
 	} else {
@@ -4124,6 +4141,7 @@ static void visual_refresh(RCore *core) {
 	}
 	r_print_set_cursor (core->print, core->print->cur_enabled, core->print->ocur, core->print->cur);
 	core->cons->blankline = true;
+	int notch = r_config_get_i (core->config, "scr.notch");
 
 	int w = visual_responsive (core);
 
@@ -4168,6 +4186,10 @@ static void visual_refresh(RCore *core) {
 			}
 		}
 		r_cons_gotoxy (0, 0);
+	}
+	int i;
+	for (i = 0; i < notch; i++) {
+		r_cons_printf (R_CONS_CLEAR_LINE"\n");
 	}
 	vi = r_config_get (core->config, "cmd.vprompt");
 	if (vi && *vi) {

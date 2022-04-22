@@ -363,13 +363,13 @@ static void vsetc(TCCState *s1, CType *type, int r, CValue *vc) {
 
 /* push constant of type "type" with useless value */
 void vpush(TCCState *s1, CType *type) {
-	CValue cval = { 0 };
+	CValue cval = {0};
 	vsetc (s1, type, VT_CONST, &cval);
 }
 
 /* push integer constant */
 ST_FUNC void vpushi(TCCState *s1, int v) {
-	CValue cval = { 0 };
+	CValue cval = {0};
 	cval.i = v;
 	vsetc (s1, &int32_type, VT_CONST, &cval);
 }
@@ -410,7 +410,7 @@ ST_FUNC void vset(TCCState *s1, CType *type, int r, int v) {
 }
 
 static void vseti(TCCState *s1, int r, int v) {
-	CType type = { 0 };
+	CType type = {0};
 	type.t = VT_INT32;
 	type.ref = NULL;
 	vset (s1, &type, r, v);
@@ -722,7 +722,7 @@ add_tstr:
 		type_to_str (s1, buf, buf_size, &s->type, varstr);
 		pstrcat (buf, buf_size, "(");
 		sa = s->next;
-		while (sa != NULL) {
+		while (sa) {
 			type_to_str (s1, buf1, sizeof (buf1), &sa->type, NULL);
 			pstrcat (buf, buf_size, buf1);
 			sa = sa->next;
@@ -1168,7 +1168,7 @@ do_decl:
 					}
 					if (v == 0 && is_structured (&type1)) {
 						ass = type1.ref;
-						while ((ass = ass->next) != NULL) {
+						while ((ass = ass->next)) {
 							ss = sym_push (s1, ass->v, &ass->type, 0, offset + ass->c);
 							if (!ss) {
 								return;
@@ -1781,7 +1781,7 @@ static void parse_type(TCCState *s1, CType *type) {
 }
 
 static void vpush_tokc(TCCState *s1, int t) {
-	CType type = { 0 };
+	CType type = {0};
 	type.t = t;
 	type.ref = NULL;
 	vsetc (s1, &type, VT_CONST, &s1->tokc);
@@ -1789,7 +1789,7 @@ static void vpush_tokc(TCCState *s1, int t) {
 
 static void unary(TCCState *s1) {
 	int n, t, align, size, r, sizeof_caller;
-	CType type = { 0 };
+	CType type = {0};
 	Sym *s;
 	AttributeDef ad;
 	static int in_sizeof = 0;
@@ -2092,7 +2092,7 @@ tok_identifier:
 			s = s1->vtop->type.ref;
 			/* find field */
 			s1->tok |= SYM_FIELD;
-			while ((s = s->next) != NULL) {
+			while ((s = s->next)) {
 				if (s->v == s1->tok) {
 					break;
 				}
@@ -2522,14 +2522,8 @@ static void decl_initializer(TCCState *s1, CType *type, unsigned long c, int fir
 
 		/* only parse strings here if correct type (otherwise: handle
 		   them as ((w)char *) expressions */
-		if ((s1->tok == TOK_LSTR &&
-/* FIXME: Handle platform here ! */
-#ifdef TCC_TARGET_PE
-		     (t1->t & VT_BTYPE) == VT_INT16 && (t1->t & VT_UNSIGNED)
-#else
-		     (t1->t & VT_BTYPE) == VT_INT32
-#endif
-		    ) || (s1->tok == TOK_STR && (t1->t & VT_BTYPE) == VT_INT8)) {
+		// TARGET_PE ?? (t1->t & VT_BTYPE) == VT_INT16 && (t1->t & VT_UNSIGNED)
+		if ((s1->tok == TOK_LSTR && (t1->t & VT_BTYPE) == VT_INT32) || (s1->tok == TOK_STR && (t1->t & VT_BTYPE) == VT_INT8)) {
 			while (tcc_nerr (s1) == 0 && (s1->tok == TOK_STR || s1->tok == TOK_LSTR)) {
 				CString *cstr = s1->tokc.cstr;
 				/* compute maximum number of chars wanted */
@@ -2885,7 +2879,7 @@ static void decl_initializer_alloc(TCCState *s1, CType *type, AttributeDef *ad, 
 				sym->asm_label = asm_label;
 			}
 		} else {
-			CValue cval = { 0 };
+			CValue cval = {0};
 			vsetc (s1, type, VT_CONST | VT_SYM, &cval);
 			s1->vtop->sym = sym;
 		}
@@ -2923,7 +2917,7 @@ static void func_decl_list(TCCState *s1, Sym *func_sym) {
 				/* find parameter in function parameter list */
 				s = func_sym;
 				found = 0;
-				while ((s = s->next) != NULL) {
+				while ((s = s->next)) {
 					if ((s->v & ~SYM_FIELD) == v) {
 						found = 1;
 						break;
@@ -3023,7 +3017,7 @@ static int decl0(TCCState *s1, int l, int is_for_loop_init) {
 			if (ad.weak) {
 				type.t |= VT_WEAK;
 			}
-#ifdef TCC_TARGET_PE
+#if 0
 			if (ad.func_import) {
 				type.t |= VT_IMPORT;
 			}
@@ -3043,7 +3037,7 @@ static int decl0(TCCState *s1, int l, int is_for_loop_init) {
 				/* reject abstract declarators in function definition */
 				sym = type.ref;
 				if (sym) {
-					while ((sym = sym->next) != NULL)
+					while ((sym = sym->next))
 						if (!(sym->v & ~SYM_FIELD)) {
 							expect (s1, "identifier6");
 						}

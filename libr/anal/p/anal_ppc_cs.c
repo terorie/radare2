@@ -215,6 +215,7 @@ static bool set_reg_profile(RAnal *anal) {
 			"=BP	r31\n"
 			"=SR	srr1\n" // status register ??
 			"=SN	r3\n" // also for ret
+			"=R0	r3\n" // ret
 			"=A0	r3\n" // also for ret
 			"=A1	r4\n"
 			"=A2	r5\n"
@@ -315,6 +316,7 @@ static bool set_reg_profile(RAnal *anal) {
 			"=SP	r1\n"
 			"=SR	srr1\n" // status register ??
 			"=SN	r0\n" // also for ret
+			"=R0	r3\n" // ret
 			"=A0	r3\n" // also for ret
 			"=A1	r4\n"
 			"=A2	r5\n"
@@ -927,8 +929,11 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len, RAn
 			op->type = R_ANAL_OP_TYPE_ADD;
 			esilprintf (op, "%s,%s,+,%s,=", ARG (2), ARG (1), ARG (0));
 			break;
-		case PPC_INS_ADDE:
 		case PPC_INS_ADDIS:
+			op->type = R_ANAL_OP_TYPE_ADD;
+			esilprintf (op, "16,%s,<<,%s,+,%s,=", ARG (2), ARG (1), ARG (0));
+			break;
+		case PPC_INS_ADDE:
 		case PPC_INS_ADDME:
 		case PPC_INS_ADDZE:
 			op->type = R_ANAL_OP_TYPE_ADD;

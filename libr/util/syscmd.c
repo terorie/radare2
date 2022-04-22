@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2013-2021 - pancake */
+/* radare - LGPL - Copyright 2013-2022 - pancake */
 
 #include <r_core.h>
 #include <errno.h>
@@ -170,7 +170,7 @@ R_API char *r_syscmd_ls(const char *input, int cons_width) {
 	}
 	if (*input) {
 		if (!strncmp (input, "-h", 2) || *input == '?') {
-			eprintf ("Usage: ls ([-e,-l,-j,-q]) ([path]) # long, json, quiet\n");
+			eprintf ("Usage: ls [-e,-l,-j,-q] [path] # long, json, quiet\n");
 			return NULL;
 		}
 		if ((!strncmp (input, "-e", 2))) {
@@ -236,6 +236,12 @@ R_API char *r_syscmd_ls(const char *input, int cons_width) {
 		return res;
 	}
 	RList *files = r_sys_dir (path);
+	if (!files) {
+		free (homepath);
+		free (pattern);
+		free (d);
+		return NULL;
+	}
 	r_list_sort (files, (RListComparator)strcmp);
 
 	if (path[strlen (path) - 1] == '/') {
@@ -507,7 +513,7 @@ R_API char *r_syscmd_cat(const char *file) {
 R_API char *r_syscmd_mkdir(const char *dir) {
 	const char *suffix = r_str_trim_head_ro (strchr (dir, ' '));
 	if (!suffix || !strncmp (suffix, "-p", 3)) {
-		return r_str_dup (NULL, "Usage: mkdir [-p] [directory]\n");
+		return strdup ("Usage: mkdir [-p] [directory]\n");
 	}
 	int ret;
 	char *dirname = (!strncmp (suffix, "-p ", 3))
@@ -516,7 +522,7 @@ R_API char *r_syscmd_mkdir(const char *dir) {
 	ret = r_sys_mkdirp (dirname);
 	if (!ret) {
 		if (r_sys_mkdir_failed ()) {
-			char *res = r_str_newf ("Cannot create \"%s\"\n", dirname);
+			char *res = r_str_newf ("Cannot create '%s'\n", dirname);
 			free (dirname);
 			return res;
 		}

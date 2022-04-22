@@ -1,11 +1,8 @@
-/* radare - LGPL - Copyright 2009-2021 - nibble, pancake */
+/* radare - LGPL - Copyright 2009-2022 - nibble, pancake */
 
 #define INTERACTIVE_MAX_REP 1024
 
 #include <r_core.h>
-#include <r_anal.h>
-#include <r_cons.h>
-#include <r_cmd.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <ctype.h>
@@ -82,15 +79,15 @@ static const char *help_msg_dollar[] = {
 };
 
 static const char *help_msg_l[] = {
-	"Usage:", "l[erls] ([arg])", "# internal less (~..) and list files (!ls)",
+	"Usage:", "l[erls] [arg]", "Internal less (~..) and file listing (!ls)",
 	"ll", " [path]", "same as ls -l",
 	"lr", " [path]", "same as ls -r",
-	"ls", " ([-e,-l,-j,-q]) ([path])", "list files in current or given directory",
-	"ls", " -e ([path])", "list files using emojis",
-	"ls", " -l ([path])", "same as ll (list files with details)",
-	"ls", " -j ([path])", "list files in json format",
-	"ls", " -q ([path])", "quiet output (one file per line)",
-	"le", "[ss] ([path])", "same as cat file~.. (or less)",
+	"ls", " [-e,-l,-j,-q] [path]", "list files in current or given directory",
+	"ls", " -e [path]", "list files using emojis",
+	"ls", " -l [path]", "same as ll (list files with details)",
+	"ls", " -j [path]", "list files in json format",
+	"ls", " -q [path]", "quiet output (one file per line)",
+	"le", "[ss] [path]", "same as cat file~.. (or less)",
 	"TODO: last command should honor asm.bits", "", "",
 	NULL
 };
@@ -360,7 +357,10 @@ struct duplicate_flag_t {
 static bool duplicate_flag(RFlagItem *flag, void *u) {
 	struct duplicate_flag_t *user = (struct duplicate_flag_t *)u;
 	/* filter per flag spaces */
-	if (r_str_glob (flag->name, user->word)) {
+	bool valid = strchr (user->word, '*')
+		? r_str_glob (flag->name, user->word)
+		: strstr (flag->name, user->word) != NULL;
+	if (valid) {
 		RFlagItem *cloned_item = r_flag_item_clone (flag);
 		if (!cloned_item) {
 			return false;
@@ -405,12 +405,18 @@ static void recursive_help(RCore *core, int detail, const char *cmd_prefix) {
 			*ch = 0;
 			char *sp = strchr (row, ' ');
 			if (sp) {
+				bool key_found = false;
 				char *k = strdup (sp + 1);
 				r_str_ansi_filter (k, NULL, NULL, -1);
 				if (strcmp (cmd_prefix, k)) {
 					if (!r_list_find (pending, k, (RListComparator)strcmp)) {
 						r_list_append (pending, k);
+						key_found = true;
 					}
+				}
+
+				if (!key_found) {
+					free (k);
 				}
 			}
 		}
@@ -744,7 +750,7 @@ static int cmd_alias(void *data, const char *input) {
 					r_cmd_alias_set_raw (core->rcmd, buf, (ut8 *)s, l);
 					free (s);
 				} else if (!strncmp (def, "base64:", 7)) {
-					int b64_len = strlen (def+7);
+					int b64_len = strlen (def + 7);
 					if (b64_len > 0 && b64_len % 4 == 0) {
 						/* b64 decode result is always shorter
 						 * than strlen() of input */
@@ -1011,7 +1017,7 @@ static int cmd_rap_run(void *data, const char *input) {
 	if (res) {
 		int ret = atoi (res);
 		free (res);
-		core->num->value = ret;
+		r_core_return_code (core, ret);
 		return ret;
 	}
 	return false;
@@ -1025,7 +1031,7 @@ static int cmd_yank(void *data, const char *input) {
 		r_core_yank (core, core->offset, r_num_math (core->num, input + 1));
 		break;
 	case 'l': // "yl"
-		core->num->value = r_buf_size (core->yank_buf);
+		r_core_return_code (core, r_buf_size (core->yank_buf));
 		break;
 	case 'y': // "yy"
 		while (input[1] == ' ') {
@@ -1071,18 +1077,30 @@ static int cmd_yank(void *data, const char *input) {
 	case 's': // "ys"
 		r_core_yank_cat_string (core, r_num_math (core->num, input + 1));
 		break;
-	case 't': // "wt"
-		if (input[1] == 'f') { // "wtf"
+	case 't': // "yt"
+		if (input[1] == 'f') { // "ytf"
 			ut64 tmpsz;
 			const char *file = r_str_trim_head_ro (input + 2);
 			const ut8 *tmp = r_buf_data (core->yank_buf, &tmpsz);
-			if (!r_file_dump (file, tmp, tmpsz, false)) {
-				eprintf ("Cannot dump to '%s'\n", file);
+
+			if (!tmpsz) {
+				eprintf ("No buffer yanked already\n");
+				break;
+			}
+
+			if (*file == '$') {
+				r_cmd_alias_set_raw (core->rcmd, file+1, tmp, tmpsz);
+			} else if (*file == '?' || !*file) {
+				r_core_cmd_help_match (core, help_msg_y, "ytf", true);
+			} else {
+				if (!r_file_dump (file, tmp, tmpsz, false)) {
+					eprintf ("Cannot dump to '%s'\n", file);
+				}
 			}
 		} else if (input[1] == ' ') {
 			r_core_yank_to (core, input + 1);
 		} else {
-			eprintf ("Usage: wt[f] [arg] ..\n");
+			r_core_cmd_help_match (core, help_msg_y, "yt", false);
 		}
 		break;
 	case 'f': // "yf"
@@ -1204,7 +1222,7 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 			sdb_query_lines (core->anal->sdb_types, out);
 			free (out);
 		}
-		ret = out != NULL;
+		ret = out;
 	} else {
 		p = r_lang_get_by_extension (core->lang, file);
 		if (p) {
@@ -1350,7 +1368,7 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 	return ret;
 }
 
-static int cmd_lsr(RCore *core, const char *input) {
+static int cmd_lr(RCore *core, const char *input) { // "lr"
 	const char *path;
 	RListIter *iter;
 	const char *arg = R_STR_ISEMPTY (input)? ".": input;
@@ -1367,19 +1385,21 @@ static int cmd_lsr(RCore *core, const char *input) {
 	return 0;
 }
 
-static int cmd_ls(void *data, const char *input) { // "ls"
+static int cmd_l(void *data, const char *input) { // "l"
 	RCore *core = (RCore *)data;
 	const char *arg = strchr (input, ' ');
 	if (arg) {
 		arg = r_str_trim_head_ro (arg + 1);
 	}
+	arg = r_str_get (arg);
 	switch (*input) {
-	case 'r':
-		cmd_lsr (core, arg);
-		break;
-	case 'l':
+	case 'l': // "ll"
+		if (input[1] == '?') {
+			r_core_cmd_help_match (core, help_msg_l, "ll", true);
+			break;
+		}
 		{
-			char *carg = r_str_newf ("-l%s", r_str_get (arg));
+			char *carg = r_str_newf ("-l %s", arg);
 			int w = r_cons_get_size (NULL) - 8;
 			char *res = r_syscmd_ls (carg, w);
 			if (res) {
@@ -1389,30 +1409,51 @@ static int cmd_ls(void *data, const char *input) { // "ls"
 			free (carg);
 		}
 		break;
-	case '?': // "l?"
-		r_core_cmd_help (core, help_msg_l);
-		break;
 	case 'e': // "le"
-		if (arg) {
+		if (input[1] == '?') {
+			r_core_cmd_help_match (core, help_msg_l, "le", true);
+			break;
+		}
+
+		if (*arg) {
 			r_core_cmdf (core, "cat %s~..", arg);
 		} else {
-			eprintf ("Usage: less [file]\n");
+			r_core_cmd_help_match (core, help_msg_l, "le", true);
 		}
 		break;
-	default: // "ls"
-		if (!arg) {
-			arg = "";
+	case 'r': // "lr"
+		if (input[1] == '?') {
+			r_core_cmd_help_match (core, help_msg_l, "lr", true);
+			break;
 		}
+		cmd_lr (core, arg);
+		break;
+	case 's': // "ls"
+		if (input[1] == '?') {
+			r_core_cmd_help_match (core, help_msg_l, "ls", true);
+			break;
+		}
+
 		if (r_fs_check (core->fs, arg)) {
 			r_core_cmdf (core, "md %s", arg);
 		} else {
 			int w = r_cons_get_size (NULL) - 8;
-			char *res = r_syscmd_ls (input + 1, w);
+			char *res;
+
+			if (*arg) {
+				//arg++;
+			}
+
+			res = r_syscmd_ls (arg, w);
 			if (res) {
 				r_cons_print (res);
 				free (res);
 			}
 		}
+		break;
+	case '?': // "l?"
+	default:
+		r_core_cmd_help (core, help_msg_l);
 		break;
 	}
 	return 0;
@@ -1882,9 +1923,9 @@ static int cmd_interpret(void *data, const char *input) {
 			} else {
 				if (!r_core_run_script (core, script_file)) {
 					eprintf ("Cannot find script '%s'\n", script_file);
-					core->num->value = 1;
+					r_core_return_code (core, R_CMD_RC_FAILURE);
 				} else {
-					core->num->value = 0;
+					r_core_return_code (core, R_CMD_RC_SUCCESS);
 				}
 			}
 		}
@@ -2285,8 +2326,7 @@ static bool cmd_r2cmd(RCore *core, const char *_input) {
 		r_sys_cmdf ("%s", input);
 		// rc = __runMain (core->r_main_ragg2, input);
 	} else if (r_str_startswith (input, "r2pm")) {
-		r_sys_cmdf ("%s", input);
-		// rc = __runMain (core->r_main_r2pm, input);
+		rc = __runMain (core->r_main_r2pm, input);
 	} else if (r_str_startswith (input, "radiff2")) {
 		rc = __runMain (core->r_main_radiff2, input);
 	} else {
@@ -2304,7 +2344,7 @@ static bool cmd_r2cmd(RCore *core, const char *_input) {
 		return false;
 	}
 	free (input);
-	core->num->value = rc;
+	r_core_return_code (core, rc);
 	return true;
 }
 
@@ -3002,7 +3042,7 @@ static void r_w32_cmd_pipe(RCore *core, char *radare_cmd, char *shell_cmd) {
 	}
 	fd_out = _open_osfhandle ((intptr_t)pipe[1], _O_WRONLY|_O_TEXT);
 	if (fd_out == -1) {
-		perror ("_open_osfhandle");
+		r_sys_perror ("_open_osfhandle");
 		goto err_r_w32_cmd_pipe;
 	}
 	cons_out = dup (1);
@@ -3271,7 +3311,7 @@ static int r_core_cmd_subst(RCore *core, char *cmd) {
 		colon = NULL;
 	}
 	// repeat command N times
-	if (rep > 0) {
+	if ((st64)rep > 0) {
 		while (IS_DIGIT (*cmd)) {
 			cmd++;
 		}
@@ -3280,15 +3320,15 @@ static int r_core_cmd_subst(RCore *core, char *cmd) {
 			goto beach;
 		}
 	}
-	if (rep < 1) {
+	if ((st64)rep < 1) {
 		rep = 1;
 	}
 	// XXX if output is a pipe then we don't want to be interactive
-	if (rep > 1 && r_sandbox_enable (0)) {
+	if ((st64)rep > 1 && r_sandbox_enable (0)) {
 		eprintf ("The command repeat syntax sugar is disabled in sandbox mode (%s)\n", cmd);
 		goto beach;
 	}
-	if (rep > INTERACTIVE_MAX_REP) {
+	if ((st64)rep > 1 && rep > INTERACTIVE_MAX_REP) {
 		if (r_cons_is_interactive ()) {
 			if (!r_cons_yesno ('n', "Are you sure to repeat this %"PFMT64d" times? (y/N)", rep)) {
 				goto beach;
@@ -3525,7 +3565,7 @@ static int r_core_cmd_subst_i(RCore *core, char *cmd, char *colon, bool *tmpseek
 						op0 = *q;
 						*q = 0;
 					}
-					haveQuote = q != NULL;
+					haveQuote = q;
 					oseek = core->offset;
 					r_core_seek (core, r_num_math (core->num, p + 2), true);
 					if (q) {
@@ -3671,7 +3711,7 @@ static int r_core_cmd_subst_i(RCore *core, char *cmd, char *colon, bool *tmpseek
 							free (res);
 						}
 					}
-					core->num->value = value;
+					r_core_return_code (core, value);
 					r_list_free (tmpenvs);
 					return 0;
 				} else { // "|"
@@ -3907,7 +3947,7 @@ next2:
 			}
 			str = r_str_append (str, ptr2 + 1);
 			cmd = r_str_append (strdup (cmd), str);
-			core->num->value = value;
+			r_core_return_code (core, value);
 			ret = r_core_cmd_subst (core, cmd);
 			free (cmd);
 			if (scr_html != -1) {
@@ -3957,7 +3997,7 @@ escape_backtick:
 		ptr = NULL;
 	}
 
-	cmd_tmpseek = core->tmpseek = ptr != NULL;
+	cmd_tmpseek = core->tmpseek = ptr;
 	int rc = 0;
 	if (ptr) {
 		char *f, *ptr2 = strchr (ptr + 1, '!');
@@ -4113,6 +4153,19 @@ repeat_arroba:
 						r_core_cmdf (core, "so %s", ptr + 2);
 						cmd_tmpseek = core->tmpseek = true;
 					}
+				}
+				break;
+			case 'c': // "@c:"
+				{
+					char *s = r_core_cmd_str (core, ptr + 2);
+					if (*s) {
+						ut64 addr = r_num_math (core->num, s);
+						if (core->num->nc.errors == 0) {
+							r_core_seek (core, addr, true);
+							cmd_tmpseek = core->tmpseek = true;
+						}
+					}
+					free (s);
 				}
 				break;
 			case 'e': // "@e:"
@@ -4428,6 +4481,7 @@ next_arroba:
 		}
 		*ptr = '@';
 		rc = ret;
+		free (tmpbits);
 		goto beach;
 	}
 fuji:
@@ -4435,7 +4489,10 @@ fuji:
 		r_str_trim_head (cmd);
 		rc = r_cmd_call (core->rcmd, cmd);
 	} else {
-		rc = false;
+		rc = 0;
+	}
+	if (rc == 1) {
+		r_core_return_code (core, rc);
 	}
 beach:
 	if (grep) {
@@ -5173,7 +5230,7 @@ R_API int r_core_cmd_foreach(RCore *core, const char *cmd, char *each) {
 					break;
 				}
 				r_cons_flush ();
-			} while (str != NULL);
+			} while (str);
 			free (out);
 		}
 		}
@@ -5721,7 +5778,7 @@ R_API void r_core_cmd_init(RCore *core) {
 		{"g", "egg manipulation", cmd_egg },
 		{"i", "get file info", cmd_info },
 		{"k", "perform sdb query", cmd_kuery },
-		{"l", "list files and directories", cmd_ls },
+		{"l", "list files and directories", cmd_l },
 		{"j", "join the contents of the two files", cmd_join },
 		{"h", "show the top n number of line in file", cmd_head },
 		{"L", "manage dynamically loaded plugins", cmd_plugins },

@@ -1,10 +1,8 @@
-/* sdb - MIT - Copyright 2012-2021 - pancake */
+/* sdb - MIT - Copyright 2012-2022 - pancake */
 
-#include <stdio.h>
-#include <string.h>
 #include <fcntl.h>
 #include "sdb.h"
-#ifdef __wasi__
+#if __wasi__ || EMSCRIPTEN
 static int getpid(void) { return 0; }
 #endif
 

@@ -14,7 +14,7 @@
 static char *gdbr_read_feature(libgdbr_t *g, const char *file, ut64 *tot_len) {
 	ut64 retlen = 0, retmax = 0, off = 0, len = g->stub_features.pkt_sz - 2,
 		blksz = g->data_max, subret_space = 0, subret_len = 0;
-	char *tmp, *tmp2, *tmp3, *ret = NULL, *subret = NULL, msg[128] = { 0 },
+	char *tmp, *tmp2, *tmp3, *ret = NULL, *subret = NULL, msg[128] = {0},
 		status, tmpchar;
 	while (1) {
 		snprintf (msg, sizeof (msg), "qXfer:features:read:%s:%"PFMT64x
@@ -110,7 +110,7 @@ exit_err:
 static char *gdbr_read_osdata(libgdbr_t *g, const char *file, ut64 *tot_len) {
 	ut64 retlen = 0, retmax = 0, off = 0, len = g->stub_features.pkt_sz - 2,
 		blksz = g->data_max;
-	char *tmp, *ret = NULL, msg[128] = { 0 }, status;
+	char *tmp, *ret = NULL, msg[128] = {0}, status;
 	while (1) {
 		snprintf (msg, sizeof (msg), "qXfer:osdata:read:%s:%" PFMT64x ",%" PFMT64x, file, off, len);
 		if (send_msg (g, msg) < 0 || read_packet (g, false) < 0 || send_ack (g) < 0) {
@@ -753,28 +753,28 @@ static RList *_extract_regs(char *regstr, RList *flags, char *pc_alias) {
 			// To parse features of other architectures refer to:
 			// https://sourceware.org/gdb/onlinedocs/gdb/Standard-Target-Features.html#Standard-Target-Features
             // - x86
-			if ((tmp1 = strstr (regstr, "core")) != NULL && tmp1 < feature_end) {
+			if ((tmp1 = strstr (regstr, "core")) && tmp1 < feature_end) {
 				typegroup = "gpr";
-			} else if ((tmp1 = strstr (regstr, "segments")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "segments")) && tmp1 < feature_end) {
 				typegroup = "seg";
-			} else if ((tmp1 = strstr (regstr, "linux")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "linux")) && tmp1 < feature_end) {
 				typegroup = "gpr";
 			// Includes avx.512
-			} else if ((tmp1 = strstr (regstr, "avx")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "avx")) && tmp1 < feature_end) {
 				typegroup = "ymm";
-			} else if ((tmp1 = strstr (regstr, "mpx")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "mpx")) && tmp1 < feature_end) {
 				typegroup = "seg";
 			// - arm
-			} else if ((tmp1 = strstr (regstr, "m-profile")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "m-profile")) && tmp1 < feature_end) {
 				typegroup = "gpr";
-			} else if ((tmp1 = strstr (regstr, "pfe")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "pfe")) && tmp1 < feature_end) {
 				typegroup = "fpu";
-			} else if ((tmp1 = strstr (regstr, "vfp")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "vfp")) && tmp1 < feature_end) {
 				typegroup = "fpu";
-			} else if ((tmp1 = strstr (regstr, "iwmmxt")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "iwmmxt")) && tmp1 < feature_end) {
 				typegroup = "xmm";
 			// -- Aarch64
-			} else if ((tmp1 = strstr (regstr, "sve")) != NULL && tmp1 < feature_end) {
+			} else if ((tmp1 = strstr (regstr, "sve")) && tmp1 < feature_end) {
 				typegroup = "ymm";
 			} else {
 				typegroup = "gpr";

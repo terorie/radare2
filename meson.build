@@ -1,4 +1,4 @@
-project('radare2', 'c', license : 'LGPL3', meson_version : '>=0.49', version : '5.6.1')
+project('radare2', 'c', license : 'LGPL3', meson_version : '>=0.49', version : '5.6.9')
 
 py3_exe = import('python').find_installation('python3')
 git_exe = find_program('git', required: false)
@@ -72,7 +72,12 @@ endif
 if host_machine.system() == 'windows'
   r2birth = run_command('cmd', '/c', 'echo %date%__%time%')
 else
-  r2birth = run_command('date', '+%Y-%m-%d__%H:%M:%S')
+  r2birth = run_command('sh', '-c', '''
+      SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-`date +%s`}";
+      FORMAT="+%Y-%m-%d__%H:%M:%S";
+      date -u -d @"$SOURCE_DATE_EPOCH" "$FORMAT" 2>/dev/null ||
+      date -u -r  "$SOURCE_DATE_EPOCH" "$FORMAT" 2>/dev/null ||
+      date -u "$FORMAT"''')
 endif
 if r2birth.returncode() != 0
   r2birth = ''
@@ -562,6 +567,7 @@ if get_option('local') and get_option('default_library') == 'shared'
   rpath_lib = '$ORIGIN'
 endif
 
+subdir('shlr/lz4')
 subdir('libr/util')
 subdir('libr/socket')
 subdir('libr/hash')

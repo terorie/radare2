@@ -1937,7 +1937,7 @@ num_too_long:
 				s1->tokc.f = (float) d;
 			} else if (t == 'L') {
 				ch = *p++;
-#ifdef TCC_TARGET_PE
+#if 0 // TARGET_PE
 				s1->tok = TOK_CDOUBLE;
 				s1->tokc.d = d;
 #else
@@ -2995,7 +2995,7 @@ static void macro_subst(TCCState *s1, TokenString *tok_str, Sym **nested_list,
 			goto no_subst;
 		}
 		s = define_find (s1, t);
-		if (s != NULL) {
+		if (s) {
 			/* if nested substitution, do nothing */
 			if (sym_find2 (*nested_list, t)) {
 				/* and mark it as TOK_NOSUBST, so it doesn't get subst'd again */

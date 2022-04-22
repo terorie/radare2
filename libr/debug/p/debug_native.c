@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2009-2021 - pancake */
+/* radare - LGPL - Copyright 2009-2022 - pancake */
 
 #include <r_userconf.h>
 #include <r_debug.h>
@@ -125,7 +125,7 @@ static bool r_debug_native_step(RDebug *dbg) {
 #elif __BSD__
 	int ret = ptrace (PT_STEP, dbg->pid, (caddr_t)1, 0);
 	if (ret != 0) {
-		perror ("native-singlestep");
+		r_sys_perror ("native-singlestep");
 		return false;
 	}
 	return true;
@@ -146,14 +146,14 @@ static bool r_debug_native_attach(RDebug *dbg, int pid) {
 	return linux_attach (dbg, pid);
 #elif __KFBSD__
 	if (ptrace (PT_ATTACH, pid, 0, 0) != -1) {
-		perror ("ptrace (PT_ATTACH)");
+		r_sys_perror ("ptrace (PT_ATTACH)");
 	}
 	return true;
 #else
 	int ret = ptrace (PTRACE_ATTACH, pid, 0, 0);
 	if (ret != -1) {
 		eprintf ("Trying to attach to %d\n", pid);
-		perror ("ptrace (PT_ATTACH)");
+		r_sys_perror ("ptrace (PT_ATTACH)");
 	}
 	return true;
 #endif
@@ -786,11 +786,11 @@ static int thp_mode(void) {
 }
 #endif
 
-static int linux_map_thp(RDebug *dbg, ut64 addr, int size) {
+static bool linux_map_thp(RDebug *dbg, ut64 addr, int size) {
 #if !defined(__ANDROID__) && defined(MADV_HUGEPAGE)
 	RBuffer *buf = NULL;
 	char code[1024];
-	int ret = true;
+	bool ret = true;
 	char *asm_list[] = {
 		"x86", "x86.as",
 		"x64", "x86.as",
@@ -832,10 +832,13 @@ static int linux_map_thp(RDebug *dbg, ut64 addr, int size) {
 	}
 	buf = r_egg_get_bin (dbg->egg);
 	if (buf) {
+		ut64 tmpsz, retval;
 		r_reg_arena_push (dbg->reg);
-		ut64 tmpsz;
 		const ut8 *tmp = r_buf_data (buf, &tmpsz);
-		ret = r_debug_execute (dbg, tmp, tmpsz, 1) == 0;
+		if (!r_debug_execute (dbg, tmp, tmpsz, &retval, true, false)) {
+			eprintf ("Failed to execute code.\n");
+		}
+		ret = (retval == 0);
 		r_reg_arena_pop (dbg->reg);
 	}
 err_linux_map_thp:
@@ -891,9 +894,12 @@ static RDebugMap* linux_map_alloc(RDebug *dbg, ut64 addr, int size, bool thp) {
 		r_reg_arena_push (dbg->reg);
 		ut64 tmpsz;
 		const ut8 *tmp = r_buf_data (buf, &tmpsz);
-		map_addr = r_debug_execute (dbg, tmp, tmpsz, 1);
+		if (!r_debug_execute (dbg, tmp, tmpsz, &map_addr, true, false)) {
+			eprintf ("Failed to execute code.\n");
+			goto err_linux_map_alloc;
+		}
 		r_reg_arena_pop (dbg->reg);
-		if (map_addr != (ut64)-1) {
+		if (map_addr < UT64_MAX) {
 			if (thp) {
 				if (!linux_map_thp (dbg, map_addr, size)) {
 					// Not overly dramatic
@@ -911,7 +917,7 @@ err_linux_map_alloc:
 static int linux_map_dealloc(RDebug *dbg, ut64 addr, int size) {
 	RBuffer *buf = NULL;
 	char code[1024];
-	int ret = 0;
+	ut64 ret = 0;
 	char *asm_list[] = {
 		"x86", "x86.as",
 		"x64", "x86.as",
@@ -940,11 +946,13 @@ static int linux_map_dealloc(RDebug *dbg, ut64 addr, int size) {
 		r_reg_arena_push (dbg->reg);
 		ut64 tmpsz;
 		const ut8 *tmp = r_buf_data (buf, &tmpsz);
-		ret = r_debug_execute (dbg, tmp, tmpsz, 1) == 0;
+		if (!r_debug_execute (dbg, tmp, tmpsz, &ret, true, false)) {
+			eprintf ("Failed to execute code.\n");
+		}
 		r_reg_arena_pop (dbg->reg);
 	}
 err_linux_map_dealloc:
-	return ret;
+	return (int)ret;
 }
 #endif
 
@@ -1035,7 +1043,7 @@ static RList *r_debug_native_map_get(RDebug *dbg) {
 	fd = r_sandbox_fopen (path, "r");
 	if (!fd) {
 		char *errstr = r_str_newf ("Cannot open '%s'", path);
-		perror (errstr);
+		r_sys_perror (errstr);
 		free (errstr);
 		return NULL;
 	}
@@ -1479,17 +1487,20 @@ static RList *xnu_desc_list(int pid) {
 #define xwr2rwx(x) ((x&1)<<2) | (x&2) | ((x&4)>>2)
 	RDebugDesc *desc;
 	RList *ret = r_list_new ();
+	if (!ret) {
+		return NULL;
+	}
 	struct vnode_fdinfowithpath vi;
 	int i, nb, type = 0;
 	int maxfd = getMaxFiles();
 
-	for (i=0 ; i<maxfd; i++) {
+	for (i = 0 ; i < maxfd; i++) {
 		nb = proc_pidfdinfo (pid, i, PROC_PIDFDVNODEPATHINFO, &vi, sizeof (vi));
-		if (nb<1) {
+		if (nb < 1) {
 			continue;
 		}
 		if (nb < sizeof (vi)) {
-			perror ("too few bytes");
+			r_sys_perror ("too few bytes");
 			break;
 		}
 		//printf ("FD %d RWX %x ", i, vi.pfi.fi_openflags);
@@ -1553,7 +1564,9 @@ static int r_debug_native_map_protect(RDebug *dbg, ut64 addr, int size, int perm
 		r_reg_arena_push (dbg->reg);
 		ut64 tmpsz;
 		const ut8 *tmp = r_buf_data (buf, &tmpsz);
-		r_debug_execute (dbg, tmp, tmpsz, 1);
+		if (!r_debug_execute (dbg, tmp, tmpsz, NULL, true, false)) {
+			eprintf ("Failed to execute code.\n");
+		}
 		r_reg_arena_pop (dbg->reg);
 		return true;
 	}
@@ -1616,7 +1629,11 @@ RDebugPlugin r_debug_plugin_native = {
 #elif __aarch64__ || __arm64__
 	.bits = R_SYS_BITS_32 | R_SYS_BITS_64,
 	.arch = "arm",
+#if __APPLE__
+	.canstep = true,
+#else
 	.canstep = false,
+#endif
 #elif __arm__
 	.bits = R_SYS_BITS_16 | R_SYS_BITS_32 | R_SYS_BITS_64,
 	.arch = "arm",

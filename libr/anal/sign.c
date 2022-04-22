@@ -431,13 +431,8 @@ static inline size_t serial_val_reserv(RSignItem *it) {
 static char *serialize_value(RSignItem *it) {
 	r_return_val_if_fail (it, false);
 
-	size_t reserve = 0;
 	RStrBuf *sb = r_strbuf_new ("");
 	r_strbuf_reserve (sb, serial_val_reserv (it));
-
-	if (it->bytes) {
-		reserve += it->bytes->size * 2;
-	}
 
 	RSignBytes *bytes = it->bytes;
 	if (bytes && bytes->bytes && bytes->mask) {
@@ -661,7 +656,7 @@ R_API bool r_sign_add_item(RAnal *a, RSignItem *it) {
 
 static RSignItem *item_new_named(RAnal *a, const char *n) {
 	RSignItem *it = r_sign_item_new ();
-	if (it && (it->name = strdup (n)) != NULL) {
+	if (it && (it->name = strdup (n))) {
 		it->space = r_spaces_current (&a->zign_spaces);
 		return it;
 	}

@@ -295,7 +295,7 @@ static bool parse_segments(struct MACH0_(obj_t) *bin, ut64 off) {
 		return false;
 	}
 	if (!(bin->segs = realloc (bin->segs, bin->nsegs * sizeof(struct MACH0_(segment_command))))) {
-		perror ("realloc (seg)");
+		r_sys_perror ("realloc (seg)");
 		return false;
 	}
 	j = bin->nsegs - 1;
@@ -384,7 +384,7 @@ static bool parse_segments(struct MACH0_(obj_t) *bin, ut64 off) {
 		}
 
 		if (!(bin->sects = realloc (bin->sects, bin->nsects * sizeof (struct MACH0_(section))))) {
-			perror ("realloc (sects)");
+			r_sys_perror ("realloc (sects)");
 			bin->nsects = sect;
 			return false;
 		}
@@ -404,15 +404,15 @@ static bool parse_segments(struct MACH0_(obj_t) *bin, ut64 off) {
 			memcpy (&bin->sects[k].segname, &sec[i], 16);
 			i += 16;
 			snprintf (section_flagname, sizeof (section_flagname), "mach0_section_%.16s_%.16s.offset",
-						bin->sects[k].segname, bin->sects[k].sectname);			
+						bin->sects[k].segname, bin->sects[k].sectname);
 			sdb_num_set (bin->kv, section_flagname, offset, 0);
 #if R_BIN_MACH064
 			snprintf (section_flagname, sizeof (section_flagname), "mach0_section_%.16s_%.16s.format",
-						bin->sects[k].segname, bin->sects[k].sectname);		
+						bin->sects[k].segname, bin->sects[k].sectname);
 			sdb_set (bin->kv, section_flagname, "mach0_section64", 0);
 #else
 			snprintf (section_flagname, sizeof (section_flagname), "mach0_section_%.16s_%.16s.format",
-						bin->sects[k].segname, bin->sects[k].sectname);		
+						bin->sects[k].segname, bin->sects[k].sectname);
 			sdb_set (bin->kv, section_flagname, "mach0_section", 0);
 #endif
 
@@ -570,7 +570,7 @@ static bool parse_dysymtab(struct MACH0_(obj_t) *bin, ut64 off) {
 	bin->ntoc = bin->dysymtab.ntoc;
 	if (bin->ntoc > 0) {
 		if (!(bin->toc = calloc (bin->ntoc, sizeof (struct dylib_table_of_contents)))) {
-			perror ("calloc (toc)");
+			r_sys_perror ("calloc (toc)");
 			return false;
 		}
 		if (!UT32_MUL (&size_tab, bin->ntoc, sizeof (struct dylib_table_of_contents))){
@@ -602,7 +602,7 @@ static bool parse_dysymtab(struct MACH0_(obj_t) *bin, ut64 off) {
 	ut64 max_nmodtab = (bin->size - bin->dysymtab.modtaboff) / sizeof (struct MACH0_(dylib_module));
 	if (bin->nmodtab > 0 && bin->nmodtab <= max_nmodtab) {
 		if (!(bin->modtab = calloc (bin->nmodtab, sizeof (struct MACH0_(dylib_module))))) {
-			perror ("calloc (modtab)");
+			r_sys_perror ("calloc (modtab)");
 			return false;
 		}
 		if (!UT32_MUL (&size_tab, bin->nmodtab, sizeof (struct MACH0_(dylib_module)))){
@@ -651,7 +651,7 @@ static bool parse_dysymtab(struct MACH0_(obj_t) *bin, ut64 off) {
 	bin->nindirectsyms = bin->dysymtab.nindirectsyms;
 	if (bin->nindirectsyms > 0) {
 		if (!(bin->indirectsyms = calloc (bin->nindirectsyms, sizeof (ut32)))) {
-			perror ("calloc (indirectsyms)");
+			r_sys_perror ("calloc (indirectsyms)");
 			return false;
 		}
 		if (!UT32_MUL (&size_tab, bin->nindirectsyms, sizeof (ut32))){
@@ -1213,7 +1213,7 @@ static int parse_dylib(struct MACH0_(obj_t) *bin, ut64 off) {
 
 	void *relibs = realloc (bin->libs, bin->nlibs * R_BIN_MACH0_STRING_LENGTH);
 	if (!relibs) {
-		perror ("realloc (libs)");
+		r_sys_perror ("realloc (libs)");
 		return false;
 	}
 	bin->libs = relibs;
@@ -1510,10 +1510,11 @@ static bool parse_chained_fixups(struct MACH0_(obj_t) *bin, ut32 offset, ut32 si
 	if (header.starts_offset > size) {
 		return false;
 	}
-	ut32 segs_count;
-	if ((segs_count = r_buf_read_le32_at (bin->b, starts_at)) == UT32_MAX) {
+	ut32 segs_count = r_buf_read_le32_at (bin->b, starts_at);
+	if (segs_count == UT32_MAX || segs_count == 0) {
 		return false;
 	}
+	bin->segs_count = segs_count;
 	bin->chained_starts = R_NEWS0 (struct r_dyld_chained_starts_in_segment *, segs_count);
 	if (!bin->chained_starts) {
 		return false;
@@ -1523,7 +1524,8 @@ static bool parse_chained_fixups(struct MACH0_(obj_t) *bin, ut32 offset, ut32 si
 	bin->fixups_size = size;
 	size_t i;
 	ut64 cursor = starts_at + sizeof (ut32);
-	for (i = 0; i < segs_count; i++) {
+	ut64 bsize = r_buf_size (bin->b);
+	for (i = 0; i < segs_count && cursor + 4 < bsize; i++) {
 		ut32 seg_off;
 		if ((seg_off = r_buf_read_le32_at (bin->b, cursor)) == UT32_MAX || !seg_off) {
 			cursor += sizeof (ut32);
@@ -1698,6 +1700,7 @@ static bool reconstruct_chained_fixup(struct MACH0_(obj_t) *bin) {
 	}
 	R_FREE (opcodes);
 
+	bin->segs_count = bin->nsegs;
 	return true;
 }
 
@@ -2123,7 +2126,7 @@ void *MACH0_(mach0_free)(struct MACH0_(obj_t) *mo) {
 	free (mo->intrp);
 	free (mo->compiler);
 	if (mo->chained_starts) {
-		for (i = 0; i < mo->nsegs; i++) {
+		for (i = 0; i < mo->nsegs && i < mo->segs_count; i++) {
 			if (mo->chained_starts[i]) {
 				free (mo->chained_starts[i]->page_start);
 				free (mo->chained_starts[i]);
@@ -2226,7 +2229,7 @@ static int prot2perm(int x) {
 	return r;
 }
 
-static bool __isDataSection(RBinSection *sect) {
+static bool is_data_section(RBinSection *sect) {
 	if (strstr (sect->name, "_cstring")) {
 		return true;
 	}
@@ -2299,7 +2302,10 @@ RList *MACH0_(get_segments)(RBinFile *bf) {
 			char *section_name = r_str_ndup (bin->sects[i].sectname, 16);
 			char *segment_name = r_str_newf ("%u.%s", (ut32)i, bin->segs[segment_index].segname);
 			s->name = r_str_newf ("%s.%s", segment_name, section_name);
-			s->is_data = __isDataSection (s);
+			if (strstr (s->name, "__const")) {
+				s->format = r_str_newf ("Cd 4[%"PFMT64d"]", s->size / 4);
+			}
+			s->is_data = is_data_section (s);
 			if (strstr (section_name, "interpos") || strstr (section_name, "__mod_")) {
 #if R_BIN_MACH064
 				const int ws = 8;
@@ -3151,6 +3157,13 @@ static void parse_relocation_info(struct MACH0_(obj_t) *bin, RSkipList *relocs, 
 	}
 
 	ut64 total_size = num * sizeof (struct relocation_info);
+	if (offset > bin->size) {
+		return;
+	}
+	if (total_size > bin->size) {
+		total_size = bin->size - offset;
+		num = total_size /= sizeof (struct relocation_info);
+	}
 	struct relocation_info *info = calloc (num, sizeof (struct relocation_info));
 	if (!info) {
 		return;
@@ -3165,7 +3178,7 @@ static void parse_relocation_info(struct MACH0_(obj_t) *bin, RSkipList *relocs, 
 	for (i = 0; i < num; i++) {
 		struct relocation_info a_info = info[i];
 		ut32 sym_num = a_info.r_symbolnum;
-		if (sym_num > bin->nsymtab) {
+		if (sym_num >= bin->nsymtab) {
 			continue;
 		}
 
@@ -3776,7 +3789,7 @@ struct addr_t *MACH0_(get_entrypoint)(struct MACH0_(obj_t) *bin) {
 
 void MACH0_(kv_loadlibs)(struct MACH0_(obj_t) *bin) {
 	int i;
-	char lib_flagname[128];	
+	char lib_flagname[128];
 	for (i = 0; i < bin->nlibs; i++) {
 		snprintf (lib_flagname, sizeof (lib_flagname), "libs.%d.name", i);
 		sdb_set (bin->kv, lib_flagname, bin->libs[i], 0);
@@ -4550,7 +4563,7 @@ struct MACH0_(mach_header) *MACH0_(get_hdr)(RBuffer *buf) {
 
 void MACH0_(iterate_chained_fixups)(struct MACH0_(obj_t) *bin, ut64 limit_start, ut64 limit_end, ut32 event_mask, RFixupCallback callback, void * context) {
 	int i = 0;
-	for (; i < bin->nsegs; i++) {
+	for (; i < bin->nsegs && i < bin->segs_count; i++) {
 		if (!bin->chained_starts[i]) {
 			continue;
 		}
@@ -4589,7 +4602,9 @@ void MACH0_(iterate_chained_fixups)(struct MACH0_(obj_t) *bin, ut64 limit_start,
 					ut8 key = 0, addr_div = 0;
 					ut16 diversity = 0;
 					ut32 ordinal = UT32_MAX;
-					if (pointer_format == DYLD_CHAINED_PTR_ARM64E) {
+					switch (pointer_format) {
+					case DYLD_CHAINED_PTR_ARM64E:
+						{
 						stride = 8;
 						bool is_auth = IS_PTR_AUTH (raw_ptr);
 						bool is_bind = IS_PTR_BIND (raw_ptr);
@@ -4625,7 +4640,10 @@ void MACH0_(iterate_chained_fixups)(struct MACH0_(obj_t) *bin, ut64 limit_start,
 							delta = p->next;
 							ptr_value = ((ut64)p->high8 << 56) | p->target;
 						}
-					} else if (pointer_format == DYLD_CHAINED_PTR_ARM64E_USERLAND24) {
+						}
+						break;
+					case DYLD_CHAINED_PTR_ARM64E_USERLAND24:
+						{
 						stride = 8;
 						struct dyld_chained_ptr_arm64e_bind24 *bind =
 								(struct dyld_chained_ptr_arm64e_bind24 *) &raw_ptr;
@@ -4662,7 +4680,11 @@ void MACH0_(iterate_chained_fixups)(struct MACH0_(obj_t) *bin, ut64 limit_start,
 								ptr_value = bin->baddr + (((ut64)p->high8 << 56) | p->target);
 							}
 						}
-					} else if (pointer_format == DYLD_CHAINED_PTR_64_OFFSET) {
+						}
+						break;
+					case DYLD_CHAINED_PTR_64:
+					case DYLD_CHAINED_PTR_64_OFFSET:
+						{
 						stride = 4;
 						struct dyld_chained_ptr_64_bind *bind =
 								(struct dyld_chained_ptr_64_bind *) &raw_ptr;
@@ -4676,73 +4698,79 @@ void MACH0_(iterate_chained_fixups)(struct MACH0_(obj_t) *bin, ut64 limit_start,
 								(struct dyld_chained_ptr_64_rebase *) &raw_ptr;
 							event = R_FIXUP_EVENT_REBASE;
 							delta = p->next;
-							ptr_value = bin->baddr + (((ut64)p->high8 << 56) | p->target);
+							ptr_value = ((ut64)p->high8 << 56) | p->target;
+							if (pointer_format == DYLD_CHAINED_PTR_64_OFFSET) {
+								ptr_value += bin->baddr;
+							}
 						}
-					} else {
+						}
+						break;
+					default:
 						eprintf ("Unsupported chained pointer format %d\n", pointer_format);
 						return;
 					}
 					if (cursor >= limit_start && cursor <= limit_end - 8 && (event & event_mask) != 0) {
 						bool carry_on;
 						switch (event) {
-							case R_FIXUP_EVENT_BIND: {
-								RFixupBindEventDetails event_details;
+						case R_FIXUP_EVENT_BIND: {
+							RFixupBindEventDetails event_details;
 
-								event_details.type = event;
-								event_details.bin = bin;
-								event_details.offset = cursor;
-								event_details.raw_ptr = raw_ptr;
-								event_details.ordinal = ordinal;
-								event_details.addend = addend;
+							event_details.type = event;
+							event_details.bin = bin;
+							event_details.offset = cursor;
+							event_details.raw_ptr = raw_ptr;
+							event_details.ordinal = ordinal;
+							event_details.addend = addend;
 
-								carry_on = callback (context, (RFixupEventDetails *) &event_details);
-								break;
-							}
-							case R_FIXUP_EVENT_BIND_AUTH: {
-								RFixupBindAuthEventDetails event_details;
+							carry_on = callback (context, (RFixupEventDetails *) &event_details);
+							break;
+						}
+						case R_FIXUP_EVENT_BIND_AUTH: {
+							RFixupBindAuthEventDetails event_details;
 
-								event_details.type = event;
-								event_details.bin = bin;
-								event_details.offset = cursor;
-								event_details.raw_ptr = raw_ptr;
-								event_details.ordinal = ordinal;
-								event_details.key = key;
-								event_details.addr_div = addr_div;
-								event_details.diversity = diversity;
+							event_details.type = event;
+							event_details.bin = bin;
+							event_details.offset = cursor;
+							event_details.raw_ptr = raw_ptr;
+							event_details.ordinal = ordinal;
+							event_details.key = key;
+							event_details.addr_div = addr_div;
+							event_details.diversity = diversity;
 
-								carry_on = callback (context, (RFixupEventDetails *) &event_details);
-								break;
-							}
-							case R_FIXUP_EVENT_REBASE: {
-								RFixupRebaseEventDetails event_details;
+							carry_on = callback (context, (RFixupEventDetails *) &event_details);
+							break;
+						}
+						case R_FIXUP_EVENT_REBASE: {
+							RFixupRebaseEventDetails event_details;
 
-								event_details.type = event;
-								event_details.bin = bin;
-								event_details.offset = cursor;
-								event_details.raw_ptr = raw_ptr;
-								event_details.ptr_value = ptr_value;
+							event_details.type = event;
+							event_details.bin = bin;
+							event_details.offset = cursor;
+							event_details.raw_ptr = raw_ptr;
+							event_details.ptr_value = ptr_value;
 
-								carry_on = callback (context, (RFixupEventDetails *) &event_details);
-								break;
-							}
-							case R_FIXUP_EVENT_REBASE_AUTH: {
-								RFixupRebaseAuthEventDetails event_details;
+							carry_on = callback (context, (RFixupEventDetails *) &event_details);
+							break;
+						}
+						case R_FIXUP_EVENT_REBASE_AUTH: {
+							RFixupRebaseAuthEventDetails event_details;
 
-								event_details.type = event;
-								event_details.bin = bin;
-								event_details.offset = cursor;
-								event_details.raw_ptr = raw_ptr;
-								event_details.ptr_value = ptr_value;
-								event_details.key = key;
-								event_details.addr_div = addr_div;
-								event_details.diversity = diversity;
+							event_details.type = event;
+							event_details.bin = bin;
+							event_details.offset = cursor;
+							event_details.raw_ptr = raw_ptr;
+							event_details.ptr_value = ptr_value;
+							event_details.key = key;
+							event_details.addr_div = addr_div;
+							event_details.diversity = diversity;
 
-								carry_on = callback (context, (RFixupEventDetails *) &event_details);
-								break;
-							}
-							default:
-								eprintf ("Unexpected event while iterating chained fixups\n");
-								carry_on = false;
+							carry_on = callback (context, (RFixupEventDetails *) &event_details);
+							break;
+						}
+						default:
+							eprintf ("Unexpected event while iterating chained fixups\n");
+							carry_on = false;
+							break;
 						}
 						if (!carry_on) {
 							return;

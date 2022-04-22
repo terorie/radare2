@@ -1,6 +1,7 @@
 #!/bin/sh
 
 MAKE=make
+export CFLAGS="${CFLAGS} -fPIC"
 gmake --help >/dev/null 2>&1
 [ $? = 0 ] && MAKE=gmake
 
@@ -54,7 +55,7 @@ if [ $WITHOUT_PULL -eq 0 ]; then
 		if [ $? = 0 ]; then
 			echo "WARNING: Updating from remote repository"
 			# Attempt to update from an existing remote
-			UPSTREAM_REMOTE=$(git remote -v | grep 'radareorg/radare2 (fetch)' | cut -f1 | head -n1)
+			UPSTREAM_REMOTE=$(git remote -v | grep 'radareorg/radare2\(\.git\)\? (fetch)' | cut -f1 | head -n1)
 			if [ -n "$UPSTREAM_REMOTE" ]; then
 				git pull "$UPSTREAM_REMOTE" master
 			else

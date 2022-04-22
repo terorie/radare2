@@ -171,7 +171,7 @@ bool xnu_step(RDebug *dbg) {
 #if XNU_USE_PTRACE
 	int ret = r_debug_ptrace (dbg, PT_STEP, dbg->pid, (caddr_t)1, 0) == 0; //SIGINT
 	if (!ret) {
-		perror ("ptrace-step");
+		r_sys_perror ("ptrace-step");
 		eprintf ("mach-error: %d, %s\n", ret, MACH_ERROR_STRING (ret));
 	}
 	return ret;
@@ -186,14 +186,13 @@ bool xnu_step(RDebug *dbg) {
 	if (!th) {
 		return false;
 	}
-	int ret = set_trace_bit (dbg, th);
-	if (!ret) {
+	if (!set_trace_bit (dbg, th)) {
 		eprintf ("xnu_step modificy_trace_bit error\n");
 		return false;
 	}
 	th->stepping = true;
 	task_resume (task);
-	return ret;
+	return true;
 #endif
 }
 
@@ -205,7 +204,7 @@ bool xnu_attach(RDebug *dbg, int pid) {
 #  define MY_ATTACH PT_ATTACH
 # endif
 	if (r_debug_ptrace (dbg, MY_ATTACH, pid, 0, 0) == -1) {
-		perror ("ptrace (PT_ATTACH)");
+		r_sys_perror ("ptrace (PT_ATTACH)");
 		return false;
 	}
 #else
@@ -225,11 +224,10 @@ bool xnu_detach(RDebug *dbg, int pid) {
 #if XNU_USE_PTRACE
 	return r_debug_ptrace (dbg, PT_DETACH, pid, NULL, 0);
 #else
-	kern_return_t kr;
 	//do the cleanup necessary
 	//XXX check for errors and ref counts
 	(void)xnu_restore_exception_ports (pid);
-	kr = mach_port_deallocate (mach_task_self (), task_dbg);
+	kern_return_t kr = mach_port_deallocate (mach_task_self (), task_dbg);
 	if (kr != KERN_SUCCESS) {
 		eprintf ("xnu_detach: failed to deallocate port\n");
 		return false;
@@ -446,7 +444,7 @@ int xnu_map_dealloc (RDebug *dbg, ut64 addr, int size) {
 	}
 	int ret = vm_deallocate (th->port, (vm_address_t)addr, (vm_size_t)size);
 	if (ret != KERN_SUCCESS) {
-		perror ("vm_deallocate");
+		r_sys_perror ("vm_deallocate");
 		return false;
 	}
 	return true;
@@ -459,7 +457,7 @@ static int xnu_get_kinfo_proc(int pid, struct kinfo_proc *kp) {
 
 	mib[3] = pid;
 	if (sysctl (mib, len, kp, &kpl, NULL, 0) == -1) {
-		perror ("sysctl");
+		r_sys_perror ("sysctl");
 		return -1;
   	}
   	if (kpl < 1) {
@@ -470,12 +468,11 @@ static int xnu_get_kinfo_proc(int pid, struct kinfo_proc *kp) {
 
 RDebugInfo *xnu_info(RDebug *dbg, const char *arg) {
 	struct kinfo_proc kp; // XXX This need to be freed?
-	int kinfo_proc_error = 0;
 	RDebugInfo *rdi = R_NEW0 (RDebugInfo);
-	if (!rdi) return NULL;
-
-	kinfo_proc_error = xnu_get_kinfo_proc(dbg->pid, &kp);
-
+	if (!rdi) {
+		return NULL;
+	}
+	int kinfo_proc_error = xnu_get_kinfo_proc(dbg->pid, &kp);
 	if (kinfo_proc_error) {
 		eprintf ("Error while querying the process info to sysctl\n");
 		return NULL;
@@ -559,14 +556,14 @@ static vm_prot_t unix_prot_to_darwin(int prot) {
 }
 #endif
 
-int xnu_map_protect (RDebug *dbg, ut64 addr, int size, int perms) {
+bool xnu_map_protect(RDebug *dbg, ut64 addr, int size, int perms) {
 	int ret;
 	task_t task = pid_to_task (dbg->tid);
 #define xwr2rwx(x) ((x&1)<<2) | (x&2) | ((x&4)>>2)
 	int xnu_perms = xwr2rwx (perms);
 	ret = mach_vm_protect (task, (vm_address_t)addr, (vm_size_t)size, (boolean_t)0, xnu_perms); //VM_PROT_COPY | perms);
 	if (ret != KERN_SUCCESS) {
-		perror ("vm_protect");
+		r_sys_perror ("vm_protect");
 		return false;
 	}
 	return true;
@@ -660,8 +657,7 @@ int xnu_get_vmmap_entries_for_pid(pid_t pid) {
 	segment_count * segment_command_sz + thread_count * \
 	sizeof (struct thread_command) + tstate_size * thread_count
 
-static void get_mach_header_sizes(size_t *mach_header_sz,
-									size_t *segment_command_sz) {
+static void get_mach_header_sizes(size_t *mach_header_sz, size_t *segment_command_sz) {
 #if __ppc64__ || __x86_64__
 	*mach_header_sz = sizeof (struct mach_header_64);
 	*segment_command_sz = sizeof (struct segment_command_64);
@@ -682,33 +678,33 @@ static cpu_type_t xnu_get_cpu_type(pid_t pid) {
 	size_t cpu_type_len = sizeof (cpu_type_t);
 
 	if (sysctlnametomib ("sysctl.proc_cputype", mib, &len) == -1) {
-		perror ("sysctlnametomib");
+		r_sys_perror ("sysctlnametomib");
 		return -1;
 	}
 	mib[len++] = pid;
 	if (sysctl (mib, len, &cpu_type, &cpu_type_len, NULL, 0) == -1) {
-		perror ("sysctl");
+		r_sys_perror ("sysctl");
 		return -1;
 	}
-	if (cpu_type_len > 0) return cpu_type;
+	if (cpu_type_len > 0) {
+		return cpu_type;
+	}
 	return -1;
 }
 
 static cpu_subtype_t xnu_get_cpu_subtype(void) {
-	size_t size;
-	cpu_subtype_t subtype;
-
-	size = sizeof (cpu_subtype_t);
-	sysctlbyname ("hw.cpusubtype", &subtype, &size, NULL, 0);
-
-	return subtype;
+	cpu_subtype_t subtype = (cpu_subtype_t)0;
+	size_t size = sizeof (cpu_subtype_t);
+	if (sysctlbyname ("hw.cpusubtype", &subtype, &size, NULL, 0) == 0) {
+		return subtype;
+	}
+	return (cpu_subtype_t)0;
 }
 #endif
 
 static void xnu_build_corefile_header(vm_offset_t header, int segment_count, int thread_count, int command_size, pid_t pid) {
 #if __ppc64__ || __x86_64__
-	struct mach_header_64 *mh64;
-	mh64 = (struct mach_header_64 *)header;
+	struct mach_header_64 *mh64 = (struct mach_header_64 *)header;
 	mh64->magic = MH_MAGIC_64;
 	mh64->cputype = xnu_get_cpu_type (pid);
 	mh64->cpusubtype = xnu_get_cpu_subtype ();
@@ -717,8 +713,7 @@ static void xnu_build_corefile_header(vm_offset_t header, int segment_count, int
 	mh64->sizeofcmds = command_size;
 	mh64->reserved = 0; // 8-byte alignment
 #elif __i386__ || __ppc__ || __POWERPC__
-	struct mach_header *mh;
-	mh = (struct mach_header *)header;
+	struct mach_header *mh = (struct mach_header *)header;
 	mh->magic = MH_MAGIC;
 	mh->cputype = xnu_get_cpu_type (pid);
 	mh->cpusubtype = xnu_get_cpu_subtype ();
@@ -735,11 +730,9 @@ static int xnu_dealloc_threads(RList *threads) {
 	xnu_thread_t *thread;
 	mach_msg_type_number_t thread_count;
 	thread_array_t thread_list;
-	kern_return_t kr = KERN_SUCCESS;
-
-	kr = task_threads (task_dbg, &thread_list, &thread_count);
+	kern_return_t kr = task_threads (task_dbg, &thread_list, &thread_count);
 	if (kr != KERN_SUCCESS) {
-		perror ("task_threads");
+		r_sys_perror ("task_threads");
 	} else {
 		r_list_foreach_safe (threads, iter, iter2, thread) {
 			mach_port_deallocate (mach_task_self (), thread->port);
@@ -756,6 +749,8 @@ static int xnu_dealloc_threads(RList *threads) {
 /* XXX Maybe this function needs refactoring, but I haven't come up with */
 /* XXX a better way to do it yet. */
 static int xnu_write_mem_maps_to_buffer(RBuffer *buffer, RList *mem_maps, int start_offset,
+// XXX this should be in r_types.h and its probably a bad idea to use it so better kill it
+#define CAST_DOWN(type, addr) (((type)((uintptr_t)(addr))))
 	vm_offset_t header, int header_end, int segment_command_sz, int *hoffset_out) {
 	RListIter *iter, *iter2;
 	RDebugMap *curr_map;
@@ -765,7 +760,6 @@ static int xnu_write_mem_maps_to_buffer(RBuffer *buffer, RList *mem_maps, int st
 	int error = 0;
 	ssize_t rc = 0;
 
-#define CAST_DOWN(type, addr) (((type)((uintptr_t)(addr))))
 #if __ppc64__ || __x86_64__
 	struct segment_command_64 *sc64;
 #elif __i386__ || __ppc__ || __POWERPC__
@@ -811,7 +805,7 @@ static int xnu_write_mem_maps_to_buffer(RBuffer *buffer, RList *mem_maps, int st
 #endif
 		if ((curr_map->perm & VM_PROT_READ) == VM_PROT_READ) {
 			vm_map_size_t tmp_size = curr_map->size;
-			off_t xfer_foffset = foffset;
+			// off_t xfer_foffset = foffset;
 
 			while (tmp_size > 0) {
 				vm_map_size_t xfer_size = tmp_size;
@@ -845,7 +839,7 @@ static int xnu_write_mem_maps_to_buffer(RBuffer *buffer, RList *mem_maps, int st
 				}
 
 				tmp_size -= xfer_size;
-				xfer_foffset += xfer_size;
+				// xfer_foffset += xfer_size;
 			}
 		}
 
@@ -977,7 +971,7 @@ bool xnu_generate_corefile (RDebug *dbg, RBuffer *dest) {
 		r_list_length (threads_list), command_size, dbg->pid);
 
 	if (!dbg->maps) {
-		perror ("There are not loaded maps");
+		r_sys_perror ("There are not loaded maps");
 	}
 	if (xnu_write_mem_maps_to_buffer (mem_maps_buffer, dbg->maps, round_page (header_size),
 		header, mach_header_sz, segment_command_sz, &hoffset) < 0) {

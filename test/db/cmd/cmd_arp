@@ -38,13 +38,13 @@ arp~?
 EOF
 EXPECT=<<EOF
 160
-147
+149
 64
-87
+88
 68
-127
+128
 808
-407
+419
 EOF
 RUN
 
@@ -73,15 +73,19 @@ Aliases (Reg->name)
 13 A7 r11
 14 A8 ?
 15 A9 ?
-16 R0 ?
+16 R0 rax
 17 R1 ?
 18 R2 ?
 19 R3 ?
-20 ZF ?
-21 SF ?
-22 CF ?
-23 OF ?
-24 SN rax
+20 F0 ?
+21 F1 ?
+22 F2 ?
+23 F3 ?
+24 ZF ?
+25 SF ?
+26 CF ?
+27 OF ?
+28 SN rax
 regset 0 (gpr)
 * arena gpr size 160
    rax gpr @ gpr (offset: 80  size: 8)
@@ -160,6 +164,7 @@ regset 0 (gpr)
    if flg @ gpr (offset: 145  size: 0)
    df flg @ gpr (offset: 145  size: 0)
    of flg @ gpr (offset: 145  size: 0)
+   riz gpr @ gpr (offset: 0  size: 8)
    rsp gpr @ gpr (offset: 152  size: 8)
    esp gpr @ gpr (offset: 152  size: 4)
    sp gpr @ gpr (offset: 152  size: 2)

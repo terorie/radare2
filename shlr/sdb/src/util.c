@@ -1,4 +1,4 @@
-/* sdb - MIT - Copyright 2011-2021 - pancake */
+/* sdb - MIT - Copyright 2011-2022 - pancake */
 
 #include "sdb.h"
 
@@ -246,7 +246,9 @@ SDB_API int sdb_alen_ignore_empty(const char *str) {
 		}
 		len++;
 	}
-	if (*p) len++;
+	if (*p) {
+		len++;
+	}
 	return len;
 }
 

@@ -92,7 +92,33 @@ r_io = library('r_io', r_io_sources,
 )
 
 r_io_dep = declare_dependency(link_with: r_io,
-                              include_directories: platform_inc)
+  include_directories: platform_inc)
+
+if get_option('blob')
+r_io_static_deps = [
+  r_util_static_dep,
+  r_socket_static_dep,
+  winkd_static_dep,
+  bochs_static_dep,
+  gdb_static_dep,
+  qnx_static_dep,
+  ar_static_dep,
+  zip_dep,
+  pth
+]
+
+r_io_static = static_library('r_io_static', r_io_sources,
+  include_directories: platform_inc,
+  link_with: [r_util_static, r_socket_static],
+  dependencies: r_io_static_deps,
+  c_args: library_cflags,
+  install: true,
+  implicit_include_directories: false,
+)
+
+r_io_static_dep = declare_dependency(link_with: r_io_static,
+  include_directories: platform_inc)
+endif
 
 pkgconfig_mod.generate(r_io,
   subdirs: 'libr',

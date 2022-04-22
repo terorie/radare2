@@ -199,8 +199,8 @@ R_API R2RSubprocess *r2r_subprocess_start(
 		goto error;
 	}
 
-	PROCESS_INFORMATION proc_info = { 0 };
-	STARTUPINFOA start_info = { 0 };
+	PROCESS_INFORMATION proc_info = {0};
+	STARTUPINFOA start_info = {0};
 	start_info.cb = sizeof (start_info);
 	start_info.hStdError = stderr_write;
 	start_info.hStdOutput = stdout_write;
@@ -250,12 +250,12 @@ error:
 }
 
 R_API bool r2r_subprocess_wait(R2RSubprocess *proc, ut64 timeout_ms) {
-	OVERLAPPED stdout_overlapped = { 0 };
+	OVERLAPPED stdout_overlapped = {0};
 	stdout_overlapped.hEvent = CreateEvent (NULL, TRUE, FALSE, NULL);
 	if (!stdout_overlapped.hEvent) {
 		return false;
 	}
-	OVERLAPPED stderr_overlapped = { 0 };
+	OVERLAPPED stderr_overlapped = {0};
 	stderr_overlapped.hEvent = CreateEvent (NULL, TRUE, FALSE, NULL);
 	if (!stderr_overlapped.hEvent) {
 		CloseHandle (stdout_overlapped.hEvent);
@@ -803,6 +803,8 @@ static R2RProcessOutput *subprocess_runner(const char *file, const char *args[],
 	if (out) {
 		out->timeout = timeout;
 	}
+	r_th_lock_leave (proc->lock);
+	r_th_lock_free (proc->lock);
 	r2r_subprocess_free (proc);
 	return out;
 }
@@ -996,6 +998,7 @@ R_API bool r2r_check_jq_available(void) {
 	r_th_lock_enter (proc->lock);
 	bool invalid_detected = proc && proc->ret != 0;
 	r_th_lock_leave (proc->lock);
+	r_th_lock_free (proc->lock);
 	r2r_subprocess_free (proc);
 	proc = NULL;
 
@@ -1008,6 +1011,7 @@ R_API bool r2r_check_jq_available(void) {
 	r_th_lock_enter (proc->lock);
 	bool valid_detected = proc && proc->ret == 0;
 	r_th_lock_leave (proc->lock);
+	r_th_lock_free (proc->lock);
 	r2r_subprocess_free (proc);
 
 	return invalid_detected && valid_detected;
@@ -1099,6 +1103,8 @@ R_API R2RAsmTestOutput *r2r_run_asm_test(R2RRunConfig *config, R2RAsmTest *test)
 		out->bytes_size = (size_t)byteslen;
 rip:
 		r_pvector_pop (&args);
+		r_th_lock_leave (proc->lock);
+		r_th_lock_free (proc->lock);
 		r2r_subprocess_free (proc);
 	}
 	if (test->mode & R2R_ASM_TEST_MODE_DISASSEMBLE) {
@@ -1124,6 +1130,8 @@ ship:
 		free (hex);
 		r_pvector_pop (&args);
 		r_pvector_pop (&args);
+		r_th_lock_leave (proc->lock);
+		r_th_lock_free (proc->lock);
 		r2r_subprocess_free (proc);
 	}
 

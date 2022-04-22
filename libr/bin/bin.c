@@ -1,4 +1,6 @@
-/* radare2 - LGPL - Copyright 2009-2021 - pancake, nibble, dso */
+/* radare2 - LGPL - Copyright 2009-2022 - pancake, nibble, dso */
+
+#define R_LOG_ORIGIN "bin"
 
 #include <r_bin.h>
 #include <r_types.h>
@@ -327,7 +329,7 @@ R_API bool r_bin_open_io(RBin *bin, RBinFileOptions *opt) {
 	RBuffer *slice = buf;
 	if (!is_debugger && (opt->loadaddr != 0 || opt->sz != r_buf_size (buf))) {
 		slice = r_buf_new_slice (buf, opt->loadaddr, opt->sz);
-	} else if (is_debugger && opt->baseaddr != UT64_MAX && opt->baseaddr != 0) {
+	} else if (is_debugger && opt->baseaddr != UT64_MAX) {
 		slice = r_buf_new_slice (buf, opt->baseaddr, opt->sz);
 	}
 	if (slice != buf) {
@@ -898,7 +900,7 @@ R_API bool r_bin_use_arch(RBin *bin, const char *arch, int bits, const char *nam
 
 	RBinFile *binfile = r_bin_file_find_by_arch_bits (bin, arch, bits);
 	if (!binfile) {
-		R_LOG_WARN ("Cannot find binfile with arch/bits %s/%d\n", arch, bits);
+		R_LOG_WARN ("Cannot find binfile with arch/bits %s/%d", arch, bits);
 		return false;
 	}
 
@@ -1172,11 +1174,11 @@ R_API RBuffer *r_bin_create(RBin *bin, const char *p,
 
 	RBinPlugin *plugin = r_bin_get_binplugin_by_name (bin, p);
 	if (!plugin) {
-		R_LOG_WARN ("Cannot find RBin plugin named '%s'.\n", p);
+		R_LOG_WARN ("Cannot find RBin plugin named '%s'.", p);
 		return NULL;
 	}
 	if (!plugin->create) {
-		R_LOG_WARN ("RBin plugin '%s' does not implement \"create\" method.\n", p);
+		R_LOG_WARN ("RBin plugin '%s' does not implement \"create\" method.", p);
 		return NULL;
 	}
 	codelen = R_MAX (codelen, 0);

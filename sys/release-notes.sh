@@ -32,30 +32,33 @@ fi
 [ -n "$2" ] && VERS="$2"
 
 git log ${PREV}..${VERS} > .l
-cat .l | grep ^Author | cut -d : -f 2- | sed -e 's,radare,pancake,' | sort -u > .A
+# When HEAD contains a tag do this magic
+if [ ! -s .l ]; then
+  VERS=$PREV
+  PREV=`git tag --sort=committerdate | grep -v conti | tail -n 2 | head -n1`
+  git log ${PREV}..${VERS} > .l
+fi
+grep ^Author .l | cut -d : -f 2- | sed -e 's,radare,pancake,' | sort -u > .A
 
-echo "Release Notes"
-echo "-------------"
+echo "## Release Notes"
 echo
 echo "Version: ${VERS}"
 echo "Previous: ${PREV}"
 printf "Commits: "
-cat .l |grep ^commit |wc -l |xargs echo
+grep ^commit .l | wc -l | xargs echo
 echo "Contributors: `wc -l .A | awk '{print $1}'`"
 echo
-echo "Highlights"
-echo "----------"
+echo "## Highlights"
 
 echo "<details><summary>More details</summary><p>"
-echo "Authors"
-echo "-------"
+echo
+echo "## Authors"
 echo
 cat .A | perl -ne '/([^<]+)(.*)$/;$a=$1;$b=$2;$a=~s/^\s+|\s+$//g;$b=~s/[<>\s]//g;print "[$a](mailto:$b) "'
 echo
 echo
 
-echo "Changes"
-echo "-------"
+echo "## Changes"
 echo
 cat .l | grep -v ^commit | grep -v ^Author | grep -v ^Date > .x
 cat .x | grep '##' | perl -ne '/##([^ ]*)/; if ($1) {print "$1\n";}' | sort -u > .y
@@ -67,8 +70,7 @@ for a in `cat .y` ; do
 done
 
 if [ -n "`echo $@ | grep -- -v`" ]; then
-	echo "To Review"
-	echo "---------"
+	echo "## To Review"
 	cat .x | grep -v '##' | sed -e 's,^ *,,g' | grep -v "^$" | \
 	      perl -ne 'if (/^\*/) { print "$_"; } else { print "* $_";}'
 	echo

@@ -5,6 +5,7 @@
 #include <r_lib.h>
 #include <r_util.h>
 #include <r_cons.h>
+#include <r_core.h>
 #include <r_debug.h> /* only used for BSD PTRACE redefinitions */
 #include <string.h>
 
@@ -98,7 +99,7 @@ struct __createprocess_params {
 };
 
 static int __createprocess_wrap(void *params) {
-	STARTUPINFO si = { 0 };
+	STARTUPINFO si = {0};
 	// TODO: Add DEBUG_PROCESS to support child process debugging
 	struct __createprocess_params *p = params;
 	return CreateProcess (p->appname, p->cmdline, NULL, NULL, FALSE,
@@ -108,7 +109,7 @@ static int __createprocess_wrap(void *params) {
 
 static int fork_and_ptraceme(RIO *io, int bits, const char *cmd) {
 	PROCESS_INFORMATION pi;
-	STARTUPINFO si = { 0 };
+	STARTUPINFO si = {0};
 	si.cb = sizeof (si);
 	DEBUG_EVENT de;
 	int pid, tid;
@@ -234,7 +235,7 @@ static void handle_posix_error(int err) {
 		break;
 	default:
 		eprintf ("posix_spawnp: unknown error %d\n", err);
-		perror ("posix_spawnp");
+		r_sys_perror ("posix_spawnp");
 		break;
 	}
 }
@@ -398,12 +399,12 @@ static int fork_and_ptraceme_for_unix(RIO *io, int bits, const char *cmd) {
 	child_data.cmd = cmd;
 	child_pid = r_io_ptrace_fork (io, fork_child_callback, &child_data);
 	if (child_pid == -1 || child_pid == 0) {
-		perror ("fork_and_ptraceme");
+		r_sys_perror ("fork_and_ptraceme");
 		return -1;
 	} do {
 		ret = waitpid (child_pid, &status, WNOHANG);
 		if (ret == -1) {
-			perror ("waitpid");
+			r_sys_perror ("waitpid");
 			return -1;
 		}
 		bed = r_cons_sleep_begin ();
@@ -447,9 +448,12 @@ static bool __plugin_open(RIO *io, const char *file, bool many) {
 	return (!strncmp (file, "dbg://", 6) && file[6]);
 }
 
-#include <r_core.h>
 static int get_pid_of(RIO *io, const char *procname) {
 	RCore *c = io->corebind.core;
+	if (!r_sandbox_check (R_SANDBOX_GRAIN_EXEC)) {
+		return -1;
+	}
+	// check sandbox
 	if (c && c->dbg && c->dbg->h) {
 		RListIter *iter;
 		RDebugPid *proc;
@@ -471,6 +475,9 @@ static RIODesc *__open(RIO *io, const char *file, int rw, int mode) {
 	RIOPlugin *_plugin;
 	RIODesc *ret = NULL;
 	char uri[128];
+	if (!r_sandbox_check (R_SANDBOX_GRAIN_EXEC)) {
+		return NULL;
+	}
 	if (!strncmp (file, "waitfor://", 10)) {
 		const char *procname = file + 10;
 		eprintf ("Waiting for %s\n", procname);

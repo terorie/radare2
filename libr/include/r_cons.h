@@ -105,11 +105,12 @@ typedef struct r_cons_grep_t {
 	int amp;
 	int zoom;
 	int zoomy; // if set then its scaled unproportionally
-	int neg;
-	int begin;
-	int end;
+	int neg[R_CONS_GREP_WORDS];
+	int begin[R_CONS_GREP_WORDS];
+	int end[R_CONS_GREP_WORDS];
 	bool icase;
 	bool ascart;
+	bool code;
 } RConsGrep;
 
 enum { ALPHA_RESET = 0x00, ALPHA_FG = 0x01, ALPHA_BG = 0x02, ALPHA_FGBG = 0x03 };

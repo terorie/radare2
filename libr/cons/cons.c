@@ -13,6 +13,9 @@
 
 R_LIB_VERSION (r_cons);
 
+// Stub function that cb_main_output gets pointed to in util/log.c by r_cons_new
+// This allows Iaito to set per-task logging redirection
+static R_TH_LOCAL RThreadLock *lock = NULL;
 static R_TH_LOCAL RConsContext r_cons_context_default = {{{{0}}}};
 static R_TH_LOCAL RCons g_cons_instance = {0};
 static R_TH_LOCAL RCons *r_cons_instance = NULL;
@@ -321,6 +324,9 @@ R_API RConsContext *r_cons_context(void) {
 }
 
 R_API RCons *r_cons_singleton(void) {
+	if (!I) {
+		r_cons_new ();
+	}
 	return I;
 }
 
@@ -383,9 +389,26 @@ R_API void r_cons_context_break_pop(RConsContext *context, bool sig) {
 	}
 }
 
+#if RADARE2_5_7_X
+
+// ABI break
+R_API void r_cons_break_push(void) {
+	r_cons_context_break_push (C, NULL, NULL, true);
+}
+
+R_API void r_cons_break_popa(void) {
+	while (!r_stack_is_empty (C->break_stack)) {
+		r_cons_context_break_pop ();
+	}
+}
+
+#else
+
 R_API void r_cons_break_push(RConsBreak cb, void *user) {
 	r_cons_context_break_push (C, cb, user, true);
 }
+
+#endif
 
 R_API void r_cons_break_pop(void) {
 	r_cons_context_break_pop (C, true);
@@ -562,8 +585,8 @@ R_API bool r_cons_enable_mouse(const bool enable) {
 #endif
 		const char *click = enable
 			? "\x1b[?1000;1006;1015h"
-			: "\x1b[?1001r"
-			  "\x1b[?1000l";
+			: "\x1b[?1000;1006;1015l";
+			// : "\x1b[?1001r\x1b[?1000l";
 		// : "\x1b[?1000;1006;1015l";
 		// const char *old = enable ? "\x1b[?1001s" "\x1b[?1000h" : "\x1b[?1001r" "\x1b[?1000l";
 		bool enabled = I->mouse;
@@ -593,9 +616,6 @@ R_API bool r_cons_enable_mouse(const bool enable) {
 #endif
 }
 
-// Stub function that cb_main_output gets pointed to in util/log.c by r_cons_new
-// This allows Cutter to set per-task logging redirection
-static R_TH_LOCAL RThreadLock *lock = NULL;
 R_API RCons *r_cons_new(void) {
 	if (!r_cons_instance) {
 		r_cons_instance = &g_cons_instance;
@@ -1279,7 +1299,7 @@ R_API void r_cons_visual_write(char *buffer) {
 }
 
 R_API void r_cons_printf_list(const char *format, va_list ap) {
-	size_t size, written;
+	size_t written;
 	va_list ap2, ap3;
 
 	va_copy (ap2, ap);
@@ -1290,11 +1310,13 @@ R_API void r_cons_printf_list(const char *format, va_list ap) {
 		return;
 	}
 	if (strchr (format, '%')) {
+		int left = 0;
 		if (palloc (MOAR + strlen (format) * 20)) {
 club:
-			size = C->buffer_sz - C->buffer_len; /* remaining space in C->buffer */
-			written = vsnprintf (C->buffer + C->buffer_len, size, format, ap3);
-			if (written >= size) { /* not all bytes were written */
+			left = C->buffer_sz - C->buffer_len; /* remaining space in C->buffer */
+			// if (left > 0) {}
+			written = vsnprintf (C->buffer + C->buffer_len, left, format, ap3);
+			if (written >= left) { /* not all bytes were written */
 				if (palloc (written + 1)) {  /* + 1 byte for \0 termination */
 					va_end (ap3);
 					va_copy (ap3, ap2);
@@ -1504,7 +1526,7 @@ R_API bool r_cons_is_tty(void) {
 #if EMSCRIPTEN || __wasi__
 	return false;
 #elif __UNIX__
-	struct winsize win = { 0 };
+	struct winsize win = {0};
 	const char *tty;
 	struct stat sb;
 
@@ -1590,13 +1612,18 @@ static bool __xterm_get_size(void) {
 		return false;
 	}
 	int rows, columns;
-	(void)write (I->fdout, "\x1b[999;999H", sizeof ("\x1b[999;999H"));
+	const char nainnain[] = "\x1b[999;999H";
+	if (write (I->fdout, nainnain, sizeof (nainnain)) != sizeof (nainnain)) {
+		return false;
+	}
 	rows = __xterm_get_cur_pos (&columns);
 	if (rows) {
 		I->rows = rows;
 		I->columns = columns;
 	} // otherwise reuse previous values
-	(void)write (I->fdout, R_CONS_CURSOR_RESTORE, sizeof (R_CONS_CURSOR_RESTORE));
+	if (write (I->fdout, R_CONS_CURSOR_RESTORE, sizeof (R_CONS_CURSOR_RESTORE) != sizeof (R_CONS_CURSOR_RESTORE))) {
+		return false;
+	}
 	return true;
 }
 
@@ -1624,7 +1651,7 @@ R_API int r_cons_get_size(int *rows) {
 	I->columns = 80;
 	I->rows = 23;
 #elif __UNIX__
-	struct winsize win = { 0 };
+	struct winsize win = {0};
 	if (isatty (0) && !ioctl (0, TIOCGWINSZ, &win)) {
 		if ((!win.ws_col) || (!win.ws_row)) {
 			const char *tty = isatty (1)? ttyname (1): NULL;
@@ -1744,7 +1771,9 @@ R_API void r_cons_show_cursor(int cursor) {
 #if __WINDOWS__
 	if (I->vtmode) {
 #endif
-		(void) write (1, cursor ? "\x1b[?25h" : "\x1b[?25l", 6);
+		if (write (1, cursor ? "\x1b[?25h" : "\x1b[?25l", 6) != 6) {
+			C->breaked = true;
+		}
 #if __WINDOWS__
 	} else {
 		static HANDLE hStdout = NULL;
@@ -1831,7 +1860,7 @@ R_API void r_cons_set_utf8(bool b) {
 				r_sys_perror ("r_cons_set_utf8");
 			}
 		} else {
-			R_LOG_WARN ("UTF-8 Codepage not installed.\n");
+			R_LOG_WARN ("UTF-8 Codepage not installed.");
 		}
 	} else {
 		UINT acp = GetACP ();
@@ -1925,7 +1954,9 @@ R_API void r_cons_zero(void) {
 	if (I->line) {
 		I->line->zerosep = true;
 	}
-	(void)write (1, "", 1);
+	if (write (1, "", 1) != 1) {
+		C->breaked = true;
+	}
 }
 
 R_API void r_cons_highlight(const char *word) {
@@ -2221,7 +2252,7 @@ R_API void r_cons_cmd_help_match(const char *help[], bool use_color, R_BORROW R_
 				break;
 			}
 		} else {
-			if (!strstr (help[i], cmd)) {
+			if (strstr (help[i], cmd)) {
 				print_match (&help[i], use_color);
 				/* Don't break - can have multiple results */
 			}
@@ -2235,7 +2266,9 @@ R_API void r_cons_cmd_help_match(const char *help[], bool use_color, R_BORROW R_
 
 R_API void r_cons_clear_buffer(void) {
 	if (I->vtmode) {
-		(void)write (1, "\x1b" "c\x1b[3J", 6);
+		if (write (1, "\x1b" "c\x1b[3J", 6) != 6) {
+			C->breaked = true;
+		}
 	}
 }
 

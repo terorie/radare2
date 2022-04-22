@@ -587,7 +587,7 @@ static ut64 estimate_slide(RBinFile *bf, RDyldCache *cache, ut64 value_mask, ut6
 		int n_classes = classlist_sample_size / 8;
 		ut64 sect_offset = sections[classlist_idx].offset + bin->hdr_offset;
 
-		if (r_buf_fread_at (cache->buf, sect_offset, (ut8*) classlist, "l", n_classes) < classlist_sample_size) {
+		if (r_buf_fread_at (cache->buf, sect_offset, (ut8*) classlist, "l", n_classes) != classlist_sample_size) {
 			goto next_bin;
 		}
 
@@ -963,7 +963,7 @@ static bool check_buffer(RBinFile *bf, RBuffer *buf) {
 		return false;
 	}
 
-	char hdr[17] = { 0 };
+	char hdr[17] = {0};
 	int rhdr = r_buf_read_at (buf, 0, (ut8 *)&hdr, sizeof (hdr) - 1);
 	if (rhdr != sizeof (hdr) - 1) {
 		return false;
@@ -1144,6 +1144,8 @@ static ut64 resolve_symbols_off(RDyldCache *cache, ut64 pa) {
 
 static RList *create_cache_bins(RBinFile *bf, RDyldCache *cache) {
 	RList *bins = r_list_newf ((RListFree)free_bin);
+	ut16 *depArray = NULL;
+	cache_imgxtr_t *extras = NULL;
 	if (!bins) {
 		return NULL;
 	}
@@ -1164,6 +1166,9 @@ static RList *create_cache_bins(RBinFile *bf, RDyldCache *cache) {
 			r_list_free (target_lib_names);
 			return NULL;
 		}
+	} else {
+		eprintf ("bin.dyldcache: Use R_DYLDCACHE_FILTER to specify a colon ':' separated\n");
+		eprintf ("bin.dyldcache: list of names to avoid loading all the files in memory.\n");
 	}
 
 	ut32 i;
@@ -1177,8 +1182,6 @@ static RList *create_cache_bins(RBinFile *bf, RDyldCache *cache) {
 		}
 
 		ut32 j;
-		ut16 *depArray = NULL;
-		cache_imgxtr_t *extras = NULL;
 		if (target_libs) {
 			HtPU *path_to_idx = NULL;
 			if (cache->accel) {
@@ -1247,7 +1250,8 @@ static RList *create_cache_bins(RBinFile *bf, RDyldCache *cache) {
 			if (deps && !deps[j]) {
 				continue;
 			}
-			ut64 pa = va2pa (img[j].address, hdr->mappingCount, &cache->maps[maps_index], cache->buf, 0, NULL, NULL);
+			// ut64 pa = va2pa (img[j].address, hdr->mappingCount, &cache->maps[maps_index], cache->buf, 0, NULL, NULL);
+			ut64 pa = va2pa (img[j].address, cache->n_maps, &cache->maps[maps_index], cache->buf, 0, NULL, NULL);
 			if (pa == UT64_MAX) {
 				continue;
 			}
@@ -1369,7 +1373,7 @@ static void rebase_bytes_v2(RDyldRebaseInfo2 *rebase_info, ut8 *buf, ut64 offset
 				ut32 delta = 1;
 				while (delta) {
 					ut64 position = in_buf + first_rebase_off - page_offset;
-					if (position >= count) {
+					if (position + 8 >= count) {
 						break;
 					}
 					ut64 raw_value = r_read_le64 (buf + position);
@@ -1413,7 +1417,7 @@ static void rebase_bytes_v3(RDyldRebaseInfo3 *rebase_info, ut8 *buf, ut64 offset
 		if (first_rebase_off >= page_offset && first_rebase_off < page_offset + count) {
 			do {
 				ut64 position = in_buf + first_rebase_off - page_offset;
-				if (position >= count) {
+				if (position + 8 >= count) {
 					break;
 				}
 				ut64 raw_value = r_read_le64 (buf + position);
@@ -1734,12 +1738,12 @@ static void populate_cache_maps(RDyldCache *cache) {
 	cache->n_maps = next_map;
 }
 
-static cache_accel_t *read_cache_accel(RBuffer *cache_buf, cache_hdr_t *hdr, cache_map_t *maps) {
+static cache_accel_t *read_cache_accel(RBuffer *cache_buf, cache_hdr_t *hdr, cache_map_t *maps, int n_maps) {
 	if (!cache_buf || !hdr || !hdr->accelerateInfoSize || !hdr->accelerateInfoAddr) {
 		return NULL;
 	}
-
-	ut64 offset = va2pa (hdr->accelerateInfoAddr, hdr->mappingCount, maps, cache_buf, 0, NULL, NULL);
+	size_t mc = R_MIN (hdr->mappingCount, n_maps);
+	ut64 offset = va2pa (hdr->accelerateInfoAddr, mc, maps, cache_buf, 0, NULL, NULL);
 	if (!offset) {
 		return NULL;
 	}
@@ -1831,7 +1835,7 @@ static objc_cache_opt_info *get_objc_opt_info(RBinFile *bf, RDyldCache *cache) {
 			}
 			ut64 cursor = selrefs_offset;
 			ut64 end = cursor + selrefs_size;
-			while (cursor < end) {
+			while (cursor + 8 < end) {
 				ut64 sel_ptr = r_buf_read_le64_at (cache->buf, cursor);
 				if (sel_ptr == UT64_MAX) {
 					break;
@@ -1895,7 +1899,7 @@ static bool load_buffer(RBinFile *bf, void **bin_obj, RBuffer *buf, ut64 loadadd
 		r_dyldcache_free (cache);
 		return false;
 	}
-	cache->accel = read_cache_accel (cache->buf, cache->hdr, cache->maps);
+	cache->accel = read_cache_accel (cache->buf, cache->hdr, cache->maps, cache->n_maps);
 	cache->bins = create_cache_bins (bf, cache);
 	if (!cache->bins) {
 		r_dyldcache_free (cache);
@@ -2096,12 +2100,18 @@ static RList *sections(RBinFile *bf) {
 
 	RListIter *iter;
 	RDyldBinImage *bin;
+	ut32 i = 0;
+	RConsIsBreaked is_breaked = (bf->rbin && bf->rbin->consb.is_breaked)? bf->rbin->consb.is_breaked: NULL;
 	r_list_foreach (cache->bins, iter, bin) {
+		i++;
+		if (is_breaked && is_breaked ()) {
+			eprintf ("Parsing sections stopped %d / %d\n", i, r_list_length (cache->bins));
+			break;
+		}
 		sections_from_bin (ret, bf, bin);
 	}
 
 	RBinSection *ptr = NULL;
-	int i;
 	for (i = 0; i < cache->n_maps; i++) {
 		if (!(ptr = R_NEW0 (RBinSection))) {
 			r_list_free (ret);
@@ -2142,7 +2152,14 @@ static RList *symbols(RBinFile *bf) {
 
 	RListIter *iter;
 	RDyldBinImage *bin;
+	ut32 i = 0;
+	RConsIsBreaked is_breaked = (bf->rbin && bf->rbin->consb.is_breaked)? bf->rbin->consb.is_breaked: NULL;
 	r_list_foreach (cache->bins, iter, bin) {
+		i++;
+		if (is_breaked && is_breaked ()) {
+			eprintf ("Parsing symbols stopped %d / %d\n", i, r_list_length (cache->bins));
+			break;
+		}
 		SetU *hash = set_u_new ();
 		if (!hash) {
 			r_list_free (ret);
@@ -2202,7 +2219,14 @@ static RList *classes(RBinFile *bf) {
 
 	RBuffer *orig_buf = bf->buf;
 	ut32 num_of_unnamed_class = 0;
+	ut32 i = 0;
+	RConsIsBreaked is_breaked = (bf->rbin && bf->rbin->consb.is_breaked)? bf->rbin->consb.is_breaked: NULL;
 	r_list_foreach (cache->bins, iter, bin) {
+		i++;
+		if (is_breaked && is_breaked ()) {
+			eprintf ("Parsing classes stopped %d / %d\n", i, r_list_length (cache->bins));
+			break;
+		}
 		struct MACH0_(obj_t) *mach0 = bin_to_mach0 (bf, bin);
 		if (!mach0) {
 			goto beach;
@@ -2265,7 +2289,9 @@ static RList *classes(RBinFile *bf) {
 				bf->buf = orig_buf;
 
 				if (!klass->name) {
-					eprintf ("KLASS ERROR AT 0x%"PFMT64x", is_classlist %d\n", pointer_to_class, is_classlist);
+					if (bf->rbin->verbose) {
+						eprintf ("KLASS ERROR AT 0x%"PFMT64x", is_classlist %d\n", pointer_to_class, is_classlist);
+					}
 					klass->name = r_str_newf ("UnnamedClass%u", num_of_unnamed_class);
 					if (!klass->name) {
 						R_FREE (klass);
@@ -2454,6 +2480,7 @@ RBinPlugin r_bin_plugin_dyldcache = {
 	.baddr = &baddr,
 	.symbols = &symbols,
 	.sections = &sections,
+	.minstrlen = 5,
 	.check_buffer = &check_buffer,
 	.destroy = &destroy,
 	.classes = &classes,

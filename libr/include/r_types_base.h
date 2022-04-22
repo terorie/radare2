@@ -68,9 +68,6 @@ typedef struct _utX {
 
 #include <stdbool.h>
 
-#define R_EMPTY { 0 }
-#define R_EMPTY2 {{ 0 }}
-
 /* limits */
 #undef UT64_MAX
 #undef UT64_GT0
@@ -213,6 +210,14 @@ typedef struct _utX {
 #undef NAN
 #elif defined(__GNUC__) || defined(__TINYC__)
 #define R_PACKED( __Declaration__ ) __Declaration__ __attribute__((__packed__))
+#endif
+
+#ifdef __GNUC__
+#define R_UNUSED __attribute__((__unused__))
+#define R_WEAK __attribute__ ((weak))
+#else
+#define R_UNUSED /* unused */
+#define R_WEAK /* weak */
 #endif
 
 #if APPLE_SDK_IPHONESIMULATOR

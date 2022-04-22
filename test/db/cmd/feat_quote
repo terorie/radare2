@@ -1,11 +1,18 @@
-NAME=Double quotes - newshell
-ARGS=-e cfg.newshell=true
-FILE=-
+NAME=Double quotes
 CMDS=<<EOF
 w "Hello World"
 ps
 w0 15
 w "\"Hello World\""
+ps
+w0 15
+w "\'Hello World\'"
+ps
+w0 15
+w "'Hello World'"
+ps
+w0 15
+w '"Hello World"'
 ps
 w0 15
 w "Hello;World"
@@ -17,14 +24,15 @@ EOF
 EXPECT=<<EOF
 Hello World
 "Hello World"
+'Hello World'
+'Hello World'
+"Hello World"
 Hello;World
 Hello@World
 EOF
 RUN
 
-NAME=Single quotes - newshell
-ARGS=-e cfg.newshell=true
-FILE=-
+NAME=Single quotes
 CMDS=<<EOF
 w 'Hello World'
 ps
@@ -33,6 +41,9 @@ w '"Hello World"'
 ps
 w0 15
 w '\'Hello World\''
+ps
+w0 15
+w '\'Hello World''
 ps
 w0 15
 w 'Hello;World'
@@ -45,14 +56,13 @@ EXPECT=<<EOF
 Hello World
 "Hello World"
 'Hello World'
+'Hello World
 Hello;World
 Hello@World
 EOF
 RUN
 
-NAME=Quotes and substitution - newshell
-ARGS=-e cfg.newshell=true
-FILE=-
+NAME=Quotes and substitution
 CMDS=<<EOF
 w "Hello $(?e World)"
 ps

@@ -39,7 +39,7 @@ ifeq ($(USE_CS4),1)
 CS_TIP=a7cac8352f7397aa73bb2e2dcc1b6cdb2e1b8461
 CS_BRA=v4
 else
-CS_TIP=f36795e36a227a686e634680d5ebc0730a319a2f
+CS_TIP=c57915c8fd281b68ffa373fa646251fda552e38f
 CS_BRA=next
 endif
 ifeq ($(CS_COMMIT_ARCHIVE),1)
@@ -69,9 +69,9 @@ ifeq (1,$(WITH_GPL))
 MODS+=grub
 endif
 endif
-SDB_URL=git://github.com/radareorg/sdb
+SDB_URL=https://github.com/radareorg/sdb
 #SDB_URL=/Users/pancake/prg/sdb
-SPP_URL=git://github.com/trufae/spp
+SPP_URL=https://github.com/trufae/spp
 PWD=$(shell pwd)
 SDB_CONFIG=${PWD}/sdb-config.mk
 
@@ -322,6 +322,13 @@ spp-sync sync-spp:
 
 spp: spp-sync
 	export CFLAGS="-DUSE_R2=1 -I../../libr/include -DHAVE_FORK=${HAVE_FORK} -fPIC";  $(MAKE) -C spp r2lib
+
+sync-yxml yxml-sync:
+	rm -rf yxml-git
+	git clone https://g.blicky.net/yxml.git/ yxml-git
+	cp -f yxml-git/yxml.c yxml/yxml.c
+	cp -f yxml-git/yxml.h yxml/yxml.h
+	rm -rf yxml-git
 
 SHLRS+=ar/libr_ar.a
 SHLRS+=bochs/lib/libbochs.a
