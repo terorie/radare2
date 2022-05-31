@@ -20,7 +20,7 @@ jobs:
           githubToken: ${{ github.token }}
           run: |
             apt update
-            apt install make git patch wget curl build-essential
+            apt install -y make git patch wget curl build-essential
             sys/install.sh
       - name: Get the output
         # Echo the `uname` output parameter from the `runcmd` step
@@ -39,7 +39,7 @@ jobs:
           githubToken: ${{ github.token }}
           run: |
             apt update
-            apt install make git patch wget curl build-essential
+            apt install -y make git patch wget curl build-essential
             sys/install.sh
       - name: Get the output
         # Echo the `uname` output parameter from the `runcmd` step
