@@ -19,6 +19,8 @@ jobs:
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
           run: |
+            apt update
+            apt install make git patch wget curl build-essential
             sys/install.sh
       - name: Get the output
         # Echo the `uname` output parameter from the `runcmd` step
@@ -36,6 +38,8 @@ jobs:
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
           run: |
+            apt update
+            apt install make git patch wget curl build-essential
             sys/install.sh
       - name: Get the output
         # Echo the `uname` output parameter from the `runcmd` step
