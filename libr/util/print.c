@@ -2592,16 +2592,16 @@ R_API void r_print_graphline(RPrint *print, const ut8 *buf, size_t len) {
 			ut8 ch = buf[i];
 			switch (0|(ch / 64)) {
 			case 0:
-				brailechar = $30 + $31;
+				brailechar = BR30 + BR31;
 				break;
 			case 1:
-				brailechar = $20 + $21;
+				brailechar = BR20 + BR21;
 				break;
 			case 2:
-				brailechar = $10 + $11;
+				brailechar = BR10 + BR11;
 				break;
 			case 3:
-				brailechar = $00 + $01;
+				brailechar = BR00 + BR01;
 				break;
 			}
 			if (brailechar) {
