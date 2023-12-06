@@ -231,6 +231,10 @@ else
   r2_bindings = join_paths(r2_libdir, 'radare2-bindings', r2_version)
 endif
 
+if host_machine.system() == 'aix'
+  library_cflags += ['-D_LINUX_SOURCE_COMPAT']
+endif
+
 r2_zsh_compdir = join_paths(r2_datdir, 'zsh', 'site-functions')
 
 # load plugin configuration
