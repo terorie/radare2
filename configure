@@ -894,6 +894,7 @@ else
 if [ "$USEROSTYPE" = "haiku" ]; then
 HAVE_PTRACE="0"
 USE_PTRACE_WRAP="0"
+else
 if [ "$USEROSTYPE" = "aix" ]; then
 HAVE_PTRACE="0"
 USE_PTRACE_WRAP="0"
