@@ -25,6 +25,9 @@ PARTIALLD=${LD} -r -all_load
 CFLAGS+=-fno-common
 LDFLAGS_LIB=-dynamiclib
 LDFLAGS_SONAME=-Wl,-install_name,${LIBDIR}/
+else ifeq ($(OSTYPE),aix)
+LDFLAGS_LIB=${LDFLAGS} -shared
+LDFLAGS_SONAME=
 else
 PARTIALLD=${LD} -r --whole-archive
 LDFLAGS_LIB=${LDFLAGS} -shared
