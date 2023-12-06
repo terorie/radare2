@@ -326,7 +326,7 @@ else
 endif
 
 has_debugger = get_option('debugger')
-have_ptrace = not ['haiku', 'windows', 'cygwin', 'sunos'].contains(host_machine.system())
+have_ptrace = not ['haiku', 'windows', 'cygwin', 'sunos', 'aix'].contains(host_machine.system())
 can_ptrace_wrap = ['linux'].contains(host_machine.system())
 
 have_ptrace = have_ptrace and has_debugger
