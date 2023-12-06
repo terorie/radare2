@@ -56,6 +56,10 @@ LIBNAME=${LDFLAGS_SONAME}${LIBSO}
 endif
 endif
 
+ifeq (${OSTYPE},aix)
+LIBNAME=
+endif
+
 ifeq (${OSTYPE},haiku)
 LINK+=-lnetwork
 endif
