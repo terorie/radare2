@@ -856,6 +856,9 @@ typedef uint64_t CWISS_Group;
 static inline CWISS_Group CWISS_Group_new(const CWISS_ControlByte* pos) {
 	CWISS_Group val;
 	memcpy(&val, pos, sizeof(val));
+#ifdef _AIX
+	val = __builtin_bswap64(val);
+#endif
 	return val;
 }
 
