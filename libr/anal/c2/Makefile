@@ -1,8 +1,10 @@
-TESTS=a b c
+TESTS=a b c bitfield
+
+CC?=cc
 
 all:
 	rm -f a.out
-	$(CC) -g kv.c $(shell pkg-config --cflags --libs r_util) -I ../../shlr/
+	$(CC) -g kv_main.c $(shell pkg-config --cflags --libs r_util) -I ../../shlr/
 	for a in $(TESTS); do \
 		echo "Testing $$a " && \
 		./a.out t/$${a}.h > t/$${a}.h.tmp && \
