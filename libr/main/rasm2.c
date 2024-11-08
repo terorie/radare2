@@ -3,7 +3,6 @@
 #define R_LOG_ORIGIN "rasm2"
 
 #include <r_asm.h>
-#include <r_lib.h>
 #include <r_main.h>
 
 typedef struct {
@@ -50,8 +49,10 @@ static void __as_free(RAsmState *as) {
 	if (as) {
 		if (as->a) {
 			r_num_free (as->a->num);
+			as->a->num = NULL;
+			r_asm_free (as->a);
 		}
-		r_asm_free (as->a);
+		// r_arch_free (as->anal->arch);
 		r_anal_free (as->anal);
 		// r_unref (as->a->config);
 		r_lib_free (as->l);
@@ -215,13 +216,14 @@ static void rarch2_list(RAsmState *as, const char *arch) {
 				pj_i (pj, (int)(size_t)k);
 			}
 			pj_end (pj);
-			pj_ks (pj, "license", r_str_get_fail (h->meta.license, "unknown"));
+			if (h->meta.license) {
+				pj_ks (pj, "license", h->meta.license);
+}
 			pj_ks (pj, "description", h->meta.desc);
 			pj_ks (pj, "features", feat);
 			pj_end (pj);
 		} else {
-			printf ("%s %-11s %-11s %-7s %s", feat, bitstr, h->meta.name,
-				r_str_get_fail (h->meta.license, "unknown"), h->meta.desc);
+			printf ("%s %-11s %-11s %s", feat, bitstr, h->meta.name, h->meta.desc);
 			if (h->meta.author) {
 				printf (" (by %s)", h->meta.author);
 			}
@@ -509,7 +511,7 @@ static int rasm_disasm(RAsmState *as, ut64 addr, const char *buf, int len, int b
 		if (acode) {
 			if (as->oneliner) {
 				r_str_replace_char (acode->assembly, '\n', ';');
-				printf ("%s\"\n", acode->assembly);
+				printf ("%s\n", acode->assembly);
 			} else if (acode->assembly[0]) {
 				printf ("%s", acode->assembly);
 			} else {
@@ -1056,7 +1058,7 @@ R_API int r_main_rasm2(int argc, const char *argv[]) {
 				as->oneliner = true;
 				printf ("e asm.arch=%s\n", arch? arch: R_SYS_ARCH);
 				printf ("e asm.bits=%d\n", bits);
-				printf ("\"wa ");
+				printf ("'wa ");
 			}
 			ret = rasm_disasm (as, offset, (char *)usrstr, len,
 					as->a->config->bits, bin, dis - 1);

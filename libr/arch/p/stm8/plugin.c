@@ -11,13 +11,30 @@ static bool stm8_op(RArchSession *as, RAnalOp *op, RAnalOpMask mask) {
 	op->type = R_ANAL_OP_TYPE_ILL;
 	// op->type = R_ANAL_OP_TYPE_NOP;
 	op->mnemonic = stm8_disasm (op->addr, op->bytes, op->size, &op->type, &jump, &len);
-	//if (op->type == R_ANAL_OP_TYPE_MOV) {
 	if (op->mnemonic) {
 		const char *ox = strstr (op->mnemonic, " 0x");
 		if (ox) {
 			ut64 v = r_num_get (NULL, ox);
 			if (v && v != UT64_MAX && v != op->jump) {
 				op->val = v;
+			}
+		} else {
+			ox = strstr (op->mnemonic, "[0x");
+			if (ox) {
+				ut64 v = r_num_get (NULL, ox + 1);
+				if (v && v != UT64_MAX && v != op->jump) {
+					// we need to use op->ptr.. but disable icod refs for stm8 only
+					op->ptr = v;
+					if (strstr (op->mnemonic, "],")) {
+						// ld [0x8], a
+						op->direction = R_ANAL_OP_DIR_WRITE;
+					} else if (strchr (op->mnemonic, ',')) {
+						// inc, dec, clr
+						op->direction = R_ANAL_OP_DIR_WRITE;
+					} else {
+						op->direction = R_ANAL_OP_DIR_READ;
+					}
+				}
 			}
 		}
 	}
@@ -40,15 +57,15 @@ static char *regs(RArchSession *as) {
 	"=PC	pc\n"
 	"=SP	sp\n"
 	"=SN	x\n"
-	"=BP	r31\n"
 	"=A0	x\n"
 	"=A1	y\n"
 	"=A2	a\n"
-	"gpr	pc	.64	0	0\n" // 24bit
-	"gpr	sp	.64	8	0\n" // 16bit
-	"gpr	x	.16	16	0\n" // 16
-	"gpr	y	.16	18	0\n" // 16
-	"gpr	a	.8	20	0\n" // 8
+	"=R0	a\n"
+	"gpr	pc	.64	0	0\n"
+	"gpr	sp	.64	8	0\n"
+	"gpr	x	.16	16	0\n"
+	"gpr	y	.16	18	0\n"
+	"gpr	a	.8	20	0\n"
 	"gpr	xh	.8	16	0\n"
 	"gpr	xl	.8	17	0\n"
 	"gpr	yh	.8	18	0\n"
@@ -73,12 +90,12 @@ const RArchPlugin r_arch_plugin_stm8 = {
 		.name = "stm8",
 		.desc = "STM8 microprocessor",
 		.author = "pancake",
-		.license = "GPL3",
+		.license = "GPL-3.0-only",
 	},
 	.arch = "stm8",
 	.cpus = NULL,
 	.endian = R_SYS_ENDIAN_LITTLE,
-	.bits = R_SYS_BITS_PACK (32),
+	.bits = R_SYS_BITS_PACK2 (8, 16),
 	.info = archinfo,
 	.decode = &stm8_op,
 	.regs = &regs,

@@ -195,8 +195,9 @@ R_API RBinSymbol *r_bin_symbol_clone(RBinSymbol *bs) {
 }
 
 // query the symbol name into the symtypes database
+// XXX R2_600 rename to r_bin_import_tags
 R_API const char *r_bin_symbol_unsafe(RBin *bin, const char *name) {
-	Sdb *db = sdb_ns (bin->sdb, "symclass", true);
+	Sdb *db = sdb_ns (bin->sdb, "symclass", true); // R2_600 - rename to imptags
 	if (db) {
 		return sdb_const_get (db, name, 0);
 	}
@@ -612,7 +613,7 @@ R_API void r_bin_list(RBin *bin, PJ *pj, int format) {
 		r_list_foreach (bin->binxtrs, it, bx) {
 			bin->cb_printf ("%s\n", bx->meta.name);
 		}
-	} else if (format) {
+	} else if (pj) {
 		pj_o (pj);
 		pj_ka (pj, "bin");
 		r_list_foreach (bin->plugins, it, bp) {
@@ -644,20 +645,17 @@ R_API void r_bin_list(RBin *bin, PJ *pj, int format) {
 		pj_end (pj);
 	} else {
 		r_list_foreach (bin->plugins, it, bp) {
-			bin->cb_printf ("bin  %-11s %s (%s) %s %s\n",
-				bp->meta.name, bp->meta.desc, r_str_get_fail (bp->meta.license, "???"),
-				r_str_get (bp->meta.version),
+			bin->cb_printf ("bin  %-11s %s %s %s\n",
+				bp->meta.name, bp->meta.desc, r_str_get (bp->meta.version),
 				r_str_get (bp->meta.author));
 		}
 		r_list_foreach (bin->binxtrs, it, bx) {
 			const char *name = strncmp (bx->meta.name, "xtr.", 4)? bx->meta.name : bx->meta.name + 3;
-			bin->cb_printf ("xtr  %-11s %s (%s)\n", name,
-				bx->meta.desc, r_str_get_fail (bx->meta.license, "???"));
+			bin->cb_printf ("xtr  %-11s %s\n", name, bx->meta.desc);
 		}
 		r_list_foreach (bin->binldrs, it, ld) {
 			const char *name = strncmp (ld->meta.name, "ldr.", 4)? ld->meta.name : ld->meta.name + 3;
-			bin->cb_printf ("ldr  %-11s %s (%s)\n", name,
-				ld->meta.desc, r_str_get_fail (ld->meta.license, "???"));
+			bin->cb_printf ("ldr  %-11s %s\n", name, ld->meta.desc);
 		}
 	}
 	if (local_pj) {

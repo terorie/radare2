@@ -41,10 +41,9 @@ R_API R_MUSTUSE const RFSType* r_fs_type_index(int i) {
 }
 
 R_API R_MUSTUSE RFS* r_fs_new(void) {
-	int i;
 	RFSPlugin* static_plugin;
 	RFS* fs = R_NEW0 (RFS);
-	if (fs) {
+	if (R_LIKELY (fs)) {
 		fs->view = R_FS_VIEW_NORMAL;
 		fs->roots = r_list_new ();
 		if (!fs->roots) {
@@ -59,7 +58,11 @@ R_API R_MUSTUSE RFS* r_fs_new(void) {
 		}
 		fs->plugins->free = free;
 		// XXX fs->roots->free = r_fs_plugin_free;
+		size_t i;
 		for (i = 0; fs_static_plugins[i]; i++) {
+			if (!fs_static_plugins[i]->meta.name) {
+				continue;
+			}
 			static_plugin = R_NEW (RFSPlugin);
 			if (!static_plugin) {
 				continue;

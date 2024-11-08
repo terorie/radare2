@@ -381,12 +381,32 @@ R_API int r_core_pseudo_code(RCore *core, const char *input) {
 			n_bb, (int)r_anal_function_realsize (fcn));
 		NEWLINE (fcn->addr, indent);
 		const char *S0 = "esp";
-		PRINTF ("static inline void push (int reg) {%s -= %d; stack[%s] = reg; }\n", S0, (int)sizeof (int), S0);
+		PRINTF ("static inline void push(int reg) {%s -= %d; stack[%s] = reg; }\n", S0, (int)sizeof (int), S0);
 		PRINTF ("static inline int pop() {int r = stack[%s]; %s += %d; return r; }\n", S0, S0, (int)sizeof (int));
 		PRINTF ("\n");
 	}
 
-	PRINTF ("int %s (int %s, int %s) {", fcn->name, a0, a1);
+	char *fs = r_core_cmd_strf (core, "afs@0x%08"PFMT64x, fcn->addr);
+	{
+		char *cc = r_core_cmd_strf (core, "afci@0x%08"PFMT64x, fcn->addr);
+		r_str_trim (cc);
+		if (R_STR_ISNOTEMPTY (cc)) {
+			PRINTF ("// callconv: %s\n", cc);
+		}
+		free (cc);
+	}
+	if (R_STR_ISEMPTY (fs) || (r_str_startswith (fs, "void") && strstr (fs, "()"))) {
+		if (!strcmp (a0, a1)) {
+			PRINTF ("int %s (int %s) {", fcn->name, a0);
+		} else {
+			PRINTF ("int %s (int %s, int %s) {", fcn->name, a0, a1);
+		}
+	} else {
+		r_str_replace_char (fs, ';', ' ');
+		r_str_trim (fs);
+		PRINTF ("%s {", fs);
+	}
+	free (fs);
 	indent++;
 	RList *visited = r_list_newf (NULL);
 	ut64 addr = fcn->addr;
@@ -412,7 +432,7 @@ R_API int r_core_pseudo_code(RCore *core, const char *input) {
 		code[len - 1] = 0; // chop last newline
 		find_and_change (code, len);
 		if (!sdb_const_get (db, K_MARK (bb->addr), 0)) {
-			bool mustprint = !queuegoto || queuegoto != bb->addr;
+			bool mustprint = !queuegoto || queuegoto != bb->addr || bb->jump == bb->addr;
 			if (mustprint) {
 				if (queuegoto && queuegoto != UT64_MAX) {
 					// NEWLINE (bb->addr, indent);
@@ -508,7 +528,13 @@ R_API int r_core_pseudo_code(RCore *core, const char *input) {
 				RAnalBlock *nbb = r_anal_bb_from_offset (core->anal, bb->fail);
 				if (r_list_contains (visited, nbb)) {
 					nbb = r_anal_bb_from_offset (core->anal, bb->jump);
-					if (r_list_contains (visited, nbb)) {
+					if (bb->jump == bb->addr) {
+						R_LOG_DEBUG ("Basic block loop found at 0x%08"PFMT64x, bb->jump);
+						if (r_list_contains (visited, nbb)) {
+							break;
+						}
+						r_list_append (visited, nbb);
+					} else if (r_list_contains (visited, nbb)) {
 						nbb = NULL;
 					}
 				}
@@ -656,12 +682,14 @@ R_API int r_core_pseudo_code(RCore *core, const char *input) {
 			r_config_set_b (core->config, "scr.html", true);
 		}
 		s = r_str_replace (s, ";", "//", true);
+#if 0
 		char *lastgoto = strstr (s, "goto ");
 		if (lastgoto) {
 			if (!strchr (lastgoto, '\n')) {
 				*s = 0;
 			}
 		}
+#endif
 		s = r_str_replace (s, "goto ", "// goto loc_", true);
 		s = cleancomments (s);
 		if (show_addr) {

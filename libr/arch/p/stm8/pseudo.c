@@ -1,8 +1,6 @@
 /* radare - LGPL - Copyright 2024 - pancake */
 
 #include <r_lib.h>
-#include <r_util.h>
-#include <r_flag.h>
 #include <r_anal.h>
 #include <r_parse.h>
 
@@ -18,16 +16,16 @@ static int replace(int argc, const char *argv[], char *newstr) {
 	} ops[] = {
 		// { 0, "ldw", "# = [#]", { 1, 2 } },
 		{ 0, "ldf", "# = #", { 1, 2 } },
-		{ 2, "ldw", "# = [#]", { 2, 1 } }, // ldw 0x00, x | x = [0x00]
-		{ 2, "ld", "# = [#]", { 1, 2 } },  // ld a, 0x86  | a = [0x86]
-		{ 3, "ld", "# = [# + #]", { 3, 2, 1 } },
+		{ 2, "ldw", "# = #", { 1, 2 } }, // ldw 0x00, x | x = [0x00]
+		{ 2, "ld", "# = #", { 1, 2 } },  // ld a, 0x86  | a = [0x86]
+		{ 3, "ld", "# = # + #", { 3, 2, 1 } },
 		{ 0, "decw", "# --", { 1 } },
-		// { 1, "clr 0x", "[0x#] = 0", { 1 } },
-		{ 1, "clr", "[#] = 0", { 1 } },
-		{ 0, "dec", "[#] --", { 1 } },
-		{ 0, "ret", "return;", {}},
+		{ 0, "clrw", "# = 0", { 1 } },
+		{ 1, "clr", "# = 0", { 1 } },
+		{ 0, "dec", "# --", { 1 } },
+		{ 0, "ret", "return a;", {}},
 		{ 0, "iret", "return;", {}},
-		{ 2, "mov", "[#] = #", { 1, 2 } }, // MOVS are stores
+		{ 2, "mov", "# = #", { 1, 2 } }, // MOVS are stores
 		{ 2, "mul", "# *= #", { 1, 2 } },
 		{ 1, "neg", "# = !#", { 1, 1 } }, // TODO carry = (res != 0)
 		{ 2, "divw", "# /= #", { 1, 2 } },
@@ -36,26 +34,21 @@ static int replace(int argc, const char *argv[], char *newstr) {
 		{ 2, "bcp", "res = # & (1 << #)", { 1, 2 } },
 		{ 1, "cpl", "complement (#)", { 1, 1 } },
 		{ 2, "and", "# |= #", { 1, 2 } },
-		// { 2, "dec", "# -= #", { 1, 2 } },
-		{ 1, "popw", "# = [sp] ; sp += 2", { 1 } },
-		{ 1, "pop", "# = [sp] ; sp += 1", { 1 } },
-		{ 1, "pushw", "sp -= 2; # = [sp]", { 1 } },
-		{ 1, "push", "sp -= 1; # = [sp]", { 1 } },
+		{ 1, "popw", "# = [sp] , sp += 2", { 1 } },
+		{ 1, "pop", "# = [sp] , sp += 1", { 1 } },
+		{ 1, "pushw", "sp -= 2, [sp] = #", { 1 } },
+		{ 1, "push", "sp -= 1, [sp] = #", { 1 } },
 		{ 1, "incw", "# ++", { 1 } },
-		{ 1, "inc", "[#] ++", { 1 } },
+		{ 1, "inc", "# ++", { 1 } },
 		{ 0, "subw", "# -= #", { 1, 2 } },
 		{ 0, "addw", "# += #", { 1, 2 } },
 		{ 2, "bset", "# |= (1 << #)", { 1, 2 } },
 		{ 2, "bres", "# &= ~(1 << #)", { 1, 2 } },
-		{ 0, "jrne", "if (res != 0) goto #", { 1 } },
-		{ 0, "jreq", "if (res == 0) goto #", { 1 } },
-		{ 0, "jrnc", "if (!carry(res)) goto #", { 1 } },
-		{ 0, "jrc", "if (carry(res)) goto #", { 1 } },
-		{ 0, "jra", "goto #", { 1 } },
 		{ 0, "jp", "goto #", { 1 } },
 		{ 1, "rrwa", "a >>= #", { 1 } },
 		{ 1, "rrc", "# = rotate_right(#, 1)", { 1, 1 } },
-	 	{ 1, "rlc", "# = rotate_left(#, 1)", { 1, 1 } }, // set carry bit and use proper C expr
+		{ 1, "rlc", "# = rotate_left(#, 1)", { 1, 1 } },
+		{ 1, "srl", "# = shift_right(#, 1)", { 1, 1 } },
 		{ 2, "xor", "# ^= #", { 1, 2 } },
 		{ 1, "rlwa", "a <<= #", { 1 } },
 		{ 1, "sra", "a >>= #", { 1 } },
@@ -67,21 +60,29 @@ static int replace(int argc, const char *argv[], char *newstr) {
 		{ 1, "jrslt", "if (res < 0) goto #", { 1 } },
 		{ 1, "jrugt", "if (res > 0) goto #", { 1 } }, // TODO: support signed vs unsigned
 		{ 1, "jrult", "if (res < 0) goto #", { 1 } }, // TODO: support signed vs unsigned
+		{ 1, "jrule", "if (res <= 0) goto #", { 1 } },
+		{ 0, "jrne", "if (res != 0) goto #", { 1 } },
+		{ 0, "jreq", "if (res == 0) goto #", { 1 } },
+		{ 0, "jrnc", "if (!res.carry) goto #", { 1 } },
+		{ 0, "jrc", "if (res.carry) goto #", { 1 } },
+		{ 0, "jra", "goto #", { 1 } },
 		{ 3, "btjt", "if (# & (1 << #)) goto #", { 1, 2, 3 } },
 		{ 3, "btjf", "if (!(# & (1 << #))) goto #", { 1, 2, 3 } },
-		{ 0, "clrw", "# = 0", { 1 } },
 		{ 0, "sllw", "# <<= 1", { 1 } },
+		{ 1, "sll", "# <<= 1", { 1, 1 } },
+		{ 2, "exgw", "# <=> #", {1, 2}},
+		{ 2, "exg", "# <=> #", {1, 2}},
 		{ 0, "slaw", "# <<= 1", { 1 } },
-		{ 1, "jrule", "if (res <= 0) goto #", { 1 } },
 		{ 0, "srlw", "# >>= 1", { 1 } },
+		{ 0, "srl", "# >>= 1", { 1 } },
 		{ 0, "callr", "# ()", { 1 } },
 		{ 0, "callf", "# ()", { 1 } },
+		{ 0, "rvf", "res.overflow = 0", { } },
 		{ 0, "sraw", "# >>= 1", { 1 } },
 		{ 2, "add", "# += #", { 1, 2 } },
 		{ 2, "sub", "# -= #", { 1, 2 } },
 		{ 1, "int", "goto #", { 1 } }, // goto interrupt
 		{ 2, "sbc", "# -= #", { 1, 2 } }, // carry
-		// { 0, "ret", "return", { 1, 2 } },
 		{ 0, NULL }
 	};
 	if (!newstr) {
@@ -162,15 +163,12 @@ static int parse(RParse *p, const char *data, char *str) {
 #endif
 	const char *op0 = buf;
 	if (!strcmp (op0, "ret") || !strcmp (op0, "iret")) {
-		strcpy (str, "return");
+		strcpy (str, "return a");
 		return true;
 	}
 	if (*buf) {
 		*w0 = *w1 = *w2 = *w3 = *w4 = '\0';
 		ptr = strchr (buf, ' ');
-		if (!ptr) {
-			ptr = strchr (buf, '\t');
-		}
 		if (ptr) {
 			*ptr = '\0';
 			ptr = (char *)r_str_trim_head_ro (ptr + 1);
@@ -179,9 +177,6 @@ static int parse(RParse *p, const char *data, char *str) {
 			optr = ptr;
 			if (ptr && *ptr == '[') {
 				ptr = strchr (ptr + 1, ']');
-			}
-			if (ptr && *ptr == '{') {
-				ptr = strchr (ptr + 1, '}');
 			}
 			if (!ptr) {
 				R_LOG_ERROR ("Unbalanced bracket");
@@ -223,18 +218,6 @@ static int parse(RParse *p, const char *data, char *str) {
 			replace (nw, wa, str);
 		}
 	}
-#if 0
-	char *s = strdup (str);
-	if (s) {
-		s = r_str_replace (s, "wzr", "0", 1);
-		s = r_str_replace (s, " lsl ", " << ", 1);
-		s = r_str_replace (s, " lsr ", " >> ", 1);
-		s = r_str_replace (s, "+ -", "- ", 1);
-		s = r_str_replace (s, "- -", "+ ", 1);
-		strcpy (str, s);
-		free (s);
-	}
-#endif
 	free (buf);
 	r_str_fixspaces (str);
 	return true;

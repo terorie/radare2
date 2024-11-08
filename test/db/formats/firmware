@@ -25,7 +25,7 @@ NAME=ljmp follow
 FILE=bins/firmware/bios_64k.bin
 CMDS=<<EOF
 e asm.bits
-s $j
+s $ij
 ? $$
 e anal.cs=0xfff0
 ? $$~segm
@@ -40,8 +40,8 @@ unit    1023.9K
 segment f000:ffaa
 string  "\xaa\xff\x0f"
 fvalue  1048490.0
-float   0.000000f
-double  0.000000
+float   0.000000000000000f
+double  0.000000000000000
 binary  0b000011111111111110101010
 base36  0_mh0q
 ternary 0t1222021020222

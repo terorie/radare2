@@ -272,7 +272,8 @@ static ut64 __lseek(RIO *io, RIODesc *fd, ut64 offset, int whence) {
 		io->off += offset;
 		break;
 	case R_IO_SEEK_END:
-		io->off = ST64_MAX;
+		io->off = UT64_MAX;
+		break;
 	}
 	return io->off;
 }
@@ -347,8 +348,9 @@ static int __getpid(RIODesc *fd) {
 RIOPlugin r_io_plugin_ptrace = {
 	.meta = {
 		.name = "ptrace",
+		.author = "pancake",
 		.desc = "Ptrace and /proc/pid/mem (if available) io plugin",
-		.license = "LGPL3",
+		.license = "LGPL-3.0-only",
 	},
 	.uris = "ptrace://,attach://",
 	.open = __open,
@@ -363,7 +365,7 @@ RIOPlugin r_io_plugin_ptrace = {
 	.isdbg = true
 };
 #else
-struct r_io_plugin_t r_io_plugin_ptrace = {
+RIOPlugin r_io_plugin_ptrace = {
 	.meta = {
 		.name = NULL
 	},

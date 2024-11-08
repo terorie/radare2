@@ -266,7 +266,7 @@ R_API RBuffer *r_buf_new_file(const char *file, int perm, int mode) {
 	return new_buffer (R_BUFFER_FILE, &u);
 }
 
-// TODO: rename to new_from_file ?
+// R2_600 : rename to new_from_file ?
 R_API RBuffer *r_buf_new_slurp(const char *file) {
 	size_t len;
 	char *tmp = r_file_slurp (file, &len);
@@ -319,6 +319,7 @@ R_API bool r_buf_prepend_bytes(RBuffer *b, const ut8 *buf, ut64 length) {
 	return r_buf_insert_bytes (b, 0, buf, length) >= 0;
 }
 
+// R2_600 - drain ?
 R_API char *r_buf_tostring(RBuffer *b) {
 	ut64 sz = r_buf_size (b);
 	char *s = malloc (sz + 1);
@@ -640,6 +641,12 @@ R_API st64 r_buf_fwrite_at(RBuffer *b, ut64 addr, const ut8 *buf, const char *fm
 	r_buf_seek (b, o_addr, R_BUF_SET);
 	return r;
 }
+
+#if R2_600
+R_API ut64 r_buf_at(RBuffer *b) {
+	return r_buf_seek (b, 0, R_BUF_CUR);
+}
+#endif
 
 R_API st64 r_buf_read_at(RBuffer *b, ut64 addr, ut8 *buf, ut64 len) {
 	R_RETURN_VAL_IF_FAIL (b && buf, -1);

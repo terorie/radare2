@@ -64,6 +64,7 @@ R_VEC_TYPE(RVecAnalRef, RAnalRef);
 #include "cmd_hash.inc.c"
 #include "cmd_debug.inc.c"
 #include "cmd_log.inc.c"
+#include "cmd_yank.inc.c"
 #include "cmd_flag.inc.c"
 #include "cmd_zign.inc.c"
 #include "cmd_project.inc.c"
@@ -168,6 +169,7 @@ static const RCoreHelpMessage help_msg_dash = {
 	"", "'-' '.-' '. -'", " those three commands do the same",
 	"-", "8", "same as s-8, but shorter to type (see +? command)",
 	"-a", " x86", "same as r2 -a x86 or e asm.arch=x86",
+	"-A", "[?]", "same as r2 -A or aaa",
 	"-b", " 32", "same as e or r2 -e",
 	"-c", " cpu", "same as r2 -e asm.cpu=",
 	"-e", " k=v", "same as r2 -b or e asm.bits",
@@ -249,8 +251,8 @@ static const RCoreHelpMessage help_msg_equal = {
 	"=t", "port", "start the tcp server (echo x|nc ::1 9090 or curl ::1:9090/cmd/x)",
 	"=r", "port", "start the rap server (o rap://9999)",
 	"=g", "[?]", "start the gdbserver",
-	"=h", "[?]", "start the http webserver",
-	"=H", "[?]", "start the http webserver (and launch the web browser)",
+	"=h", " port", "start the http webserver on 'port'",
+	"=H", " port", "start the http webserver on 'port' (launch browser)",
 	"\nother:", "", "",
 	"=&", ":port", "start rap server in background (same as '&_=h')",
 	"=", ":host:port cmd", "run 'cmd' command on remote server",
@@ -270,9 +272,9 @@ static const RCoreHelpMessage help_msg_equalh = {
 	"=h-", "", "stop background webserver",
 	"=h--", "", "stop foreground webserver",
 	"=h*", "", "restart current webserver",
-	"=h&", " port", "start http server in background",
-	"=H", " port", "launch browser and listen for http",
-	"=H&", " port", "launch browser and listen for http in background",
+	"=h&", " port", "start http server on 'port' in background",
+	"=H", " port", "start http server on 'port' (launch browser)",
+	"=H&", " port", "start http server on 'port' in background (launch browser)",
 	NULL
 };
 
@@ -391,34 +393,6 @@ static const RCoreHelpMessage help_msg_uc = {
 	NULL
 };
 
-static const RCoreHelpMessage help_msg_y = {
-	"Usage:", "y[fptxy] [len] [[@]addr]", " # See wd? for memcpy, same as 'yf'.",
-	"y!", "", "open cfg.editor to edit the clipboard",
-	"y", " 16 0x200", "copy 16 bytes into clipboard from 0x200",
-	"y", " 16 @ 0x200", "copy 16 bytes into clipboard from 0x200",
-	"y", " 16", "copy 16 bytes into clipboard",
-	"y", "", "show yank buffer information (origin len bytes)",
-	"y*", "", "print in r2 commands what's been yanked",
-	"y-", "", "empty / reset clipboard",
-	"y8", "", "print contents of clipboard in hexpairs",
-	"yf", " [L] [O] [file]", "copy [L] bytes from offset [O] of [file] into clipboard",
-	"yfa", " [filepath]", "copy all bytes from file into clipboard",
-	"yfx", " 10203040", "yank from hexpairs (same as ywx)",
-	"yj", "", "print in JSON commands what's been yanked",
-	"yp", "", "print contents of clipboard",
-	"ys", "", "print contents of clipboard as string",
-	"yt", " 64 0x200", "copy 64 bytes from current seek to 0x200",
-	"ytf", " file", "dump the clipboard to given file",
-	"yw", " hello world", "yank from string",
-	"ywx", " 10203040", "yank from hexpairs (same as yfx)",
-	"yx", "", "print contents of clipboard in hexadecimal",
-	"yy", " 0x3344", "paste contents of clipboard to 0x3344",
-	"yy", " @ 0x3344", "paste contents of clipboard to 0x3344",
-	"yy", "", "paste contents of clipboard at current seek",
-	"yz", " [len]", "copy nul-terminated string (up to blocksize) into clipboard",
-	NULL
-};
-
 static const RCoreHelpMessage help_msg_triple_exclamation = {
 	"Usage:", "!!![-*][cmd] [arg|$type...]", " # user-defined autocompletion for commands",
 	"!!!", "", "list all autocompletions",
@@ -530,6 +504,8 @@ static void recursive_help(RCore *core, int detail, const char *cmd_prefix) {
 		recursive_help (core, detail, "=");
 		recursive_help (core, detail, "??");
 		recursive_help (core, detail, "~");
+		recursive_help (core, detail, "$?");
+		recursive_help (core, detail, "?$?");
 	}
 	if (strchr (cmd_prefix, '[')) {
 		R_LOG_WARN ("Invalid char in command, help message must be fixed: %s", cmd_prefix);
@@ -1278,157 +1254,6 @@ static int cmd_iosys(void *data, const char *input) {
 	return false;
 }
 
-static int cmd_yank(void *data, const char *input) {
-	ut64 n;
-	RCore *core = (RCore *)data;
-	switch (input[0]) {
-	case ' ': // "y "
-		{
-			char *args = r_str_trim_dup (input + 1);
-			char *arg = r_str_after (args, ' ');
-			ut64 addr = arg? r_num_math (core->num, arg): core->offset;
-			r_core_yank (core, addr, r_num_math (core->num, args));
-			free (args);
-		}
-		break;
-	case '-': // "y-"
-		r_core_yank_unset (core);
-		break;
-	case 'l': // "yl"
-		r_core_return_value (core, r_buf_size (core->yank_buf));
-		break;
-	case 'r':
-		R_LOG_ERROR ("Missing plugin. Run: r2pm -ci r2yara");
-		r_core_return_code (core, 1);
-		break;
-	case 'y': // "yy"
-		input = r_str_trim_head_ro (input);
-		n = input[1]? r_num_math (core->num, input + 1): core->offset;
-		r_core_yank_paste (core, n, 0);
-		break;
-	case 'x': // "yx"
-		r_core_yank_hexdump (core, r_num_math (core->num, input + 1));
-		break;
-	case 'z': // "yz"
-		r_core_yank_string (core, core->offset, r_num_math (core->num, input + 1));
-		break;
-	case 'w': // "yw" ... we have yf which makes more sense than 'w'
-		switch (input[1]) {
-		case ' ':
-			r_core_yank_set (core, 0, (const ut8*)input + 2, strlen (input + 2));
-			break;
-		case 'x':
-			if (input[2] == ' ') {
-				char *out = strdup (input + 3);
-				int len = r_hex_str2bin (input + 3, (ut8*)out);
-				if (len > 0) {
-					r_core_yank_set (core, core->offset, (const ut8*)out, len);
-				} else {
-					R_LOG_ERROR ("Invalid length");
-				}
-				free (out);
-			} else {
-				r_core_cmd_help_match (core, help_msg_y, "ywx");
-			}
-			// r_core_yank_write_hex (core, input + 2);
-			break;
-		default:
-			r_core_cmd_help_match (core, help_msg_y, "ywx");
-			break;
-		}
-		break;
-	case 'p': // "yp"
-		r_core_yank_cat (core, r_num_math (core->num, input + 1));
-		break;
-	case 's': // "ys"
-		r_core_yank_cat_string (core, r_num_math (core->num, input + 1));
-		break;
-	case 't': // "yt"
-		switch (input[1]) {
-		case 'f': // "ytf"
-			{
-			ut64 tmpsz;
-			const char *file = r_str_trim_head_ro (input + 2);
-			const ut8 *tmp = r_buf_data (core->yank_buf, &tmpsz);
-			if (!tmpsz) {
-				R_LOG_ERROR ("No buffer has been yanked");
-				break;
-			}
-
-			if (*file == '$') {
-				r_cmd_alias_set_raw (core->rcmd, file+1, tmp, tmpsz);
-			} else if (*file == '?' || !*file) {
-				r_core_cmd_help_match (core, help_msg_y, "ytf");
-			} else {
-				if (!r_file_dump (file, tmp, tmpsz, false)) {
-					R_LOG_ERROR ("Cannot dump to '%s'", file);
-				}
-			}
-			}
-			break;
-		case ' ':
-			r_core_yank_to (core, input + 1);
-			break;
-		case '?':
-			r_core_cmd_help_contains (core, help_msg_y, "yt");
-			break;
-		default:
-			r_core_return_invalid_command (core, "yt", input[1]);
-			break;
-		}
-		break;
-	case 'f': // "yf"
-		switch (input[1]) {
-		case ' ': // "yf" // "yf [filename] [nbytes] [offset]"
-			r_core_yank_file_ex (core, input + 1);
-			break;
-		case 'x': // "yfx"
-			r_core_yank_hexpair (core, input + 2);
-			break;
-		case 'a': // "yfa"
-			r_core_yank_file_all (core, input + 2);
-			break;
-		case '?':
-			r_core_cmd_help_contains (core, help_msg_y, "yf");
-			break;
-		default:
-			r_core_return_invalid_command (core, "yf", input[1]);
-			break;
-		}
-		break;
-	case '!': // "y!"
-		{
-			char *sig = r_core_cmd_str (core, "y*");
-			if (R_STR_ISEMPTY (sig)) {
-				free (sig);
-				sig = strdup ("wx 10203040");
-			}
-			char *data = r_core_editor (core, NULL, sig);
-			if (data) {
-				char *save_ptr = NULL;
-				(void) r_str_tok_r (data, ";\n", &save_ptr);
-				r_core_cmdf (core, "y%s", data);
-				free (data);
-			}
-			free (sig);
-		}
-		break;
-	case '*': // "y*"
-	case 'j': // "yj"
-	case '8': // "y8"
-	case '\0': // "y"
-		r_core_yank_dump (core, 0, input[0]);
-		break;
-	case '?':
-		r_core_cmd_help (core, help_msg_y);
-		break;
-	default:
-		r_core_return_invalid_command (core, "y", *input);
-		break;
-	}
-	return true;
-}
-
 static int lang_run_file(RCore *core, RLang *lang, const char *file) {
 	r_core_sysenv_begin (core, NULL);
 	return r_lang_run_file (core->lang, file);
@@ -1460,6 +1285,7 @@ static char *langFromHashbang(RCore *core, const char *file) {
 }
 
 R_API bool r_core_run_script(RCore *core, const char *file) {
+	R_RETURN_VAL_IF_FAIL (core && file, false);
 	bool ret = false;
 	RListIter *iter;
 	RLangPlugin *p;
@@ -1502,11 +1328,11 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 		const char *dir = r_config_get (core->config, "dir.types");
 		char *out = r_anal_cparse_file (core->anal, file, dir, NULL);
 		if (out) {
+			ret = true;
 			r_cons_print (out);
 			sdb_query_lines (core->anal->sdb_types, out);
 			free (out);
 		}
-		ret = out;
 	} else {
 		p = r_lang_get_by_extension (core->lang, file);
 		if (p) {
@@ -1535,7 +1361,7 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 						r_lang_use (core->lang, "pipe");
 						lang_run_file (core, core->lang, cmd);
 						free (cmd);
-						ret = 1;
+						ret = true;
 					}
 				} else if (!strcmp (ext, "exe")) {
 #if R2__WINDOWS__
@@ -1546,57 +1372,57 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "rexx")) {
 					r_lang_use (core->lang, "pipe");
 					char *cmd = cmdstr ("rexx");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "zig")) {
 					char *cmd = cmdstr ("zig run");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "d")) {
 					char *cmd = cmdstr ("dmd -run");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "lsp")) {
 					char *cmd = cmdstr ("newlisp -n");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "go")) {
 					char *cmd = cmdstr ("go run");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "es6")) {
 					char *cmd = cmdstr ("babel-node");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "rb")) {
 					char *cmd = cmdstr ("ruby");
 					r_lang_use (core->lang, "pipe");
 					lang_run_file (core, core->lang, cmd);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "nim")) {
 					r_lang_use (core->lang, "nim");
 					lang_run_file (core, core->lang, file);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "vala")) {
 					r_lang_use (core->lang, "vala");
 					lang_run_file (core, core->lang, file);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "sh")) {
 					char *shell = r_sys_getenv ("SHELL");
 					if (!shell) {
@@ -1611,10 +1437,10 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 						}
 						free (shell);
 					}
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "r2s")) {
 					r_core_visual_slides (core, file);
-					ret = 1;
+					ret = true;
 				} else if (!strcmp (ext, "qjs")) {
 					if (r_lang_use (core->lang, "qjs")) {
 						ret = r_lang_run_file (core->lang, file);
@@ -1690,11 +1516,11 @@ R_API bool r_core_run_script(RCore *core, const char *file) {
 					lang_run_file (core, core->lang, cmd);
 					free (lang);
 					free (cmd);
-					ret = 1;
+					ret = true;
 				} else {
 					if (r_file_is_executable (file)) {
 						r_core_cmdf (core, "#!pipe %s%s", (*file == '/')?"":"./", file);
-						ret = 1;
+						ret = true;
 					}
 				}
 			}
@@ -2067,6 +1893,21 @@ static int cmd_stdin(void *data, const char *input) {
 				r_core_cmd_call (core, "e");
 			} else {
 				r_core_cmdf (core, "e %s", arg);
+			}
+			break;
+		case 'A': // -A
+			if (*arg == '?') {
+				r_core_cmd_call (core, "aaa?");
+			} else {
+				if (R_STR_ISEMPTY (arg)) {
+					r_core_cmd_call (core, "aaa");
+				} else if (!strcmp (arg, "A")) {
+					r_core_cmd_call (core, "aaaa");
+				} else if (!strcmp (arg, "AA")) {
+					r_core_cmd_call (core, "aaaaa");
+				} else {
+					r_core_cmd_call (core, "aaa?");
+				}
 			}
 			break;
 		default:
@@ -3630,7 +3471,7 @@ static int cmd_system(void *data, const char *input) {
 			cmd_help_exclamation (core);
 		} else if (input[1] == '*') {
 			char *cmd = r_str_trim_dup (input + 1);
-			(void)r_core_cmdf (core, "\"#!pipe %s\"", cmd);
+			(void)r_core_cmdf (core, "'#!pipe %s", cmd);
 			free (cmd);
 		} else {
 			if (input[1]) {
@@ -3676,7 +3517,7 @@ static int cmd_system(void *data, const char *input) {
 			cmd = r_str_replace (cmd, " ", "\\ ", true);
 			cmd = r_str_replace (cmd, "\\ ", " ", false);
 			cmd = r_str_replace (cmd, "\"", "'", false);
-			ret = r_core_cmdf (core, "\"#!pipe %s\"", cmd);
+			ret = r_core_cmdf (core, "'#!pipe %s", cmd);
 			free (cmd);
 		}
 		break;
@@ -4109,7 +3950,7 @@ static int r_core_cmd_subst(RCore *core, char *cmd) {
 	r_str_trim_tail (cmd);
 	R_CRITICAL_LEAVE (core);
 	// lines starting with # are ignored (never reach cmd_hash()), except #! and #?
-	if (R_UNLIKELY (!*cmd)) {
+	if (R_STR_ISEMPTY (cmd)) {
 		if (core->cmdrepeat > 0) {
 			lastcmd_repeat (core, true);
 			ret = r_core_cmd_nullcallback (core);
@@ -4263,11 +4104,6 @@ static char *find_eoq(char *p) {
 	return p;
 }
 
-static char* findSeparator(char *p) {
-	char *q = strchr (p, '+');
-	return q? q: strchr (p, '-');
-}
-
 static void tmpenvs_free(void *item) {
 	if (item) {
 		r_sys_setenv (item, NULL);
@@ -4323,6 +4159,21 @@ static char *r_core_cmd_find_subcmd_begin(char *cmd) {
 
 static char *r_core_cmd_find_subcmd_end(char *cmd, bool backquote) {
 	return (char *)r_str_firstbut_escape (cmd, backquote ? '`' : ')', "'");
+}
+
+static char *getarg(char *ptr) {
+	if (*ptr == '{') {
+		char *mander = strdup (ptr + 1);
+		char *brace = strchr (mander, '}');
+		if (brace) {
+			*brace = 0;
+		}
+		return mander;
+	}
+	if (*ptr == ':') {
+		return strdup (ptr + 1);
+	}
+	return NULL;
 }
 
 static int r_core_cmd_subst_i(RCore *core, char *cmd, char *colon, bool *tmpseek) {
@@ -4975,6 +4826,19 @@ repeat_arroba:
 					r_sys_setenv (k, v);
 					r_list_append (tmpenvs, k);
 				}
+			} else {
+				char *n = r_sys_getenv (ptr + 2);
+				if (R_STR_ISNOTEMPTY (n)) {
+					ut64 v = r_num_math (core->num, n);
+					if (core->num->nc.errors == 0) {
+						r_core_seek (core, v, true);
+						cmd_tmpseek = core->tmpseek = true;
+						goto fuji;
+					}
+				} else {
+					R_LOG_ERROR ("Unknown envvar @%");
+				}
+				free (n);
 			}
 			free (k);
 		} else if (ptr[1] == '.') { // "@."
@@ -4993,7 +4857,8 @@ repeat_arroba:
 				// WAT DU
 				R_LOG_TODO ("what do you expect for @. import offset from file maybe?");
 			}
-		} else if (ptr[0] && ptr[1] == ':' && ptr[2]) {
+		} else if (ptr[0] && ptr[1] && ptr[2]) {
+			// TODO: getarg(ptr);
 			// TODO move into a separate function
 			switch (ptr[0]) {
 			case 'F': // "@F:" // temporary flag space
@@ -5013,7 +4878,7 @@ repeat_arroba:
 							r_core_seek (core, bb->addr + inst_off, true);
 							cmd_tmpseek = core->tmpseek = true;
 						} else {
-							R_LOG_INFO ("The current basic block has %d instructions", bb->ninstr);
+							R_LOG_INFO ("Current basic block has %d instructions", bb->ninstr);
 						}
 					} else {
 						R_LOG_ERROR ("Can't find a basic block for 0x%08"PFMT64x, core->offset);
@@ -5042,51 +4907,39 @@ repeat_arroba:
 					R_LOG_ERROR ("cannot open '%s'", ptr + 3);
 				}
 				break;
-			case 'r': // "@r:" // regname
-				if (ptr[1] == '{') { // @r{PC}
-					ut64 regval;
-					char *mander = strdup (ptr + 2);
-					char *brace = strchr (mander, '}');
-					if (brace) {
-						*brace = 0;
-					}
-					char *sep = findSeparator (mander);
-					if (sep) {
-						char ch = *sep;
-						*sep = 0;
-						regval = r_debug_reg_get (core->dbg, mander);
-						*sep = ch;
-						char *numexpr = r_str_newf ("0x%"PFMT64x"%s", regval, sep);
-						regval = r_num_math (core->num, numexpr);
-						free (numexpr);
+			case 'r': // "@r:" "@r{}" // regname
+				{
+					char *arg = getarg (ptr + 1);
+					if (arg) {
+						int err = 0;
+						ut64 v = r_debug_reg_get_err (core->dbg, arg, &err, 0);
+						free (arg);
+						if (err) {
+							R_LOG_ERROR ("Invalid register name for @r");
+							core->num->nc.errors ++;
+						} else {
+							r_core_seek (core, v, true);
+							cmd_tmpseek = core->tmpseek = true;
+						}
 					} else {
-						regval = r_debug_reg_get (core->dbg, ptr + 2);
+						R_LOG_ERROR ("Invalid register name for @r");
+						core->num->nc.errors ++;
 					}
-					r_core_seek (core, regval, true);
-					cmd_tmpseek = core->tmpseek = true;
-					free (mander);
-				} else if (ptr[1] == ':') { // @r:PC
-					ut64 regval;
-					char *mander = strdup (ptr + 2);
-					char *sep = findSeparator (mander);
-					if (sep) {
-						char ch = *sep;
-						*sep = 0;
-						regval = r_debug_reg_get (core->dbg, mander);
-						*sep = ch;
-						char *numexpr = r_str_newf ("0x%"PFMT64x"%s", regval, sep);
-						regval = r_num_math (core->num, numexpr);
-						free (numexpr);
-					} else {
-						regval = r_debug_reg_get (core->dbg, ptr + 2);
-					}
-					r_core_seek (core, regval, true);
-					cmd_tmpseek = core->tmpseek = true;
-					free (mander);
 				}
 				break;
 			case 'b': // "@b:" // bits
-				is_bits_set = set_tmp_bits (core, r_num_math (core->num, ptr + 2), &tmpbits, &cmd_ignbithints);
+				{
+					char *arg = getarg (ptr + 1);
+					if (arg) {
+						ut64 v = r_num_math (core->num, arg);
+						if (core->num->nc.errors == 0) {
+							is_bits_set = set_tmp_bits (core, v, &tmpbits, &cmd_ignbithints);
+						}
+					} else {
+						R_LOG_ERROR ("Invalid block size @b");
+						core->num->nc.errors ++;
+					}
+				}
 				break;
 			case 'i': // "@i:"
 				{
@@ -5113,11 +4966,11 @@ repeat_arroba:
 			case 'e': // "@e:"
 				{
 					char *cmd = parse_tmp_evals (core, ptr + 2);
-					if (!tmpeval) {
-						tmpeval = cmd;
-					} else {
+					if (tmpeval) {
 						tmpeval = r_str_prepend (tmpeval, cmd);
 						free (cmd);
+					} else {
+						tmpeval = cmd;
 					}
 				}
 				break;
@@ -5207,7 +5060,7 @@ repeat_arroba:
 					char *q = strchr (ptr + 2, ':');
 					if (q) {
 						*q++ = 0;
-						int bits = r_num_math (core->num, q);
+						const int bits = r_num_math (core->num, q);
 						is_bits_set = set_tmp_bits (core, bits, &tmpbits, &cmd_ignbithints);
 					}
 					is_arch_set = set_tmp_arch (core, ptr + 2, &tmpasm);
@@ -6518,9 +6371,11 @@ beach:
 	return ret;
 }
 
+// R2_600 return bool
 R_API int r_core_cmd_lines(RCore *core, const char *lines) {
+	R_RETURN_VAL_IF_FAIL (core && lines, false);
 	int r, ret = true;
-	char *nl, *data, *odata;
+	char *data, *odata;
 
 	if (R_STR_ISEMPTY (lines)) {
 		return true;
@@ -6529,12 +6384,13 @@ R_API int r_core_cmd_lines(RCore *core, const char *lines) {
 	if (!odata) {
 		return false;
 	}
-	size_t line_count = r_str_char_count(lines, '\n');
-
+	size_t line_count = r_str_char_count (lines, '\n');
 	const bool istty = r_cons_is_tty ();
-	const bool show_progress_bar = core->print->enable_progressbar && r_config_get_b (core->config, "scr.interactive") && r_config_get_i (core->config, "scr.progressbar") && istty;
+	const bool show_progress_bar = core->print->enable_progressbar \
+		&& r_config_get_b (core->config, "scr.interactive") \
+		&& r_config_get_b (core->config, "scr.progressbar") && istty;
 	size_t current_line = 0;
-	nl = strchr (odata, '\n');
+	char *nl = strchr (odata, '\n');
 	if (nl) {
 		r_cons_break_push (NULL, NULL);
 		do {
@@ -6621,7 +6477,7 @@ R_API int r_core_cmd_command(RCore *core, const char *command) {
 R_API char *r_core_disassemble_instr(RCore *core, ut64 addr, int l) {
 	R_RETURN_VAL_IF_FAIL (core, NULL);
 	char *cmd, *ret = NULL;
-	cmd = r_str_newf ("pd %i @ 0x%08"PFMT64x, l, addr);
+	cmd = r_str_newf ("pi %i @ 0x%08"PFMT64x, l, addr);
 	if (cmd) {
 		ret = r_core_cmd_str (core, cmd);
 		free (cmd);

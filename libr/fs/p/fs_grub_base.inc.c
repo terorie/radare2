@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2011-2023 - pancake */
+/* radare - LGPL - Copyright 2011-2024 - pancake */
 
 #include <r_fs.h>
 #include "grubfs.h"
@@ -35,7 +35,7 @@ static void FSP(_close)(RFSFile *file) {
 	gfs->file->fs->close (gfs->file);
 }
 
-static RList *list = NULL;
+static R_TH_LOCAL RList *list = NULL;
 
 static int dirhook(const char *filename, const struct grub_dirhook_info *info, void *closure) {
 	RFSFile *fsf = r_fs_file_new (NULL, filename);
@@ -49,12 +49,10 @@ static int dirhook(const char *filename, const struct grub_dirhook_info *info, v
 }
 
 static RList *FSP(_dir)(RFSRoot *root, const char *path, int view) {
-	GrubFS *gfs;
-
-	if (!root)
+	if (!root) {
 		return NULL;
-
-	gfs = root->ptr;
+	}
+	GrubFS *gfs = root->ptr;
 	list = r_list_new ();
 	//gfs->file->device->data = &root->iob;
 	grubfs_bind_io (&root->iob, root->delta);
@@ -77,6 +75,7 @@ static bool FSP(_mount)(RFSRoot *root) {
 }
 
 static void FSP(_umount)(RFSRoot *root) {
+	R_RETURN_IF_FAIL (root);
 	grubfs_free (root->ptr);
 	root->ptr = NULL;
 }
@@ -86,7 +85,7 @@ RFSPlugin FSS(r_fs_plugin) = {
 		.name = FSNAME,
 		.author = "pancake",
 		.desc = FSDESC,
-		.license = "GPL2",
+		.license = "GPL-3.0-only",
 	},
 	.open = FSP(_open),
 	.read = FSP(_read),

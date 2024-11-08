@@ -3747,6 +3747,9 @@ static void _store_bin_sections(ELFOBJ *eo, const RVector *elf_bin_sections) {
 		ptr->type = elf_section_type_tostring (section->type);
 		ptr->add = !eo->phdr; // Load sections if there is no PHDR
 		ptr->perm = elf_flags_to_section_perms (section->flags);
+#if R2_USE_NEW_ABI
+		ptr->flags = section->flags;
+#endif
 #if 0
 TODO: ptr->flags = elf_flags_tostring (section->flags);
 #define SHF_WRITE	     (1 << 0)	/* Writable */
@@ -4852,7 +4855,7 @@ static RVecRBinElfSymbol *Elf_(load_symbols_from)(ELFOBJ *eo, int type) {
 }
 
 bool Elf_(load_symbols)(ELFOBJ *eo) {
-	R_RETURN_VAL_IF_FAIL (eo, NULL);
+	R_RETURN_VAL_IF_FAIL (eo, false);
 	if (!eo->g_symbols_vec) {
 		eo->g_symbols_vec = Elf_(load_symbols_from) (eo, R_BIN_ELF_ALL_SYMBOLS);
 	}
@@ -4860,7 +4863,7 @@ bool Elf_(load_symbols)(ELFOBJ *eo) {
 }
 
 bool Elf_(load_imports)(ELFOBJ *eo) {
-	R_RETURN_VAL_IF_FAIL (eo, NULL);
+	R_RETURN_VAL_IF_FAIL (eo, false);
 	if (!eo->g_imports_vec) {
 		eo->g_imports_vec = Elf_(load_symbols_from) (eo, R_BIN_ELF_IMPORT_SYMBOLS);
 	}

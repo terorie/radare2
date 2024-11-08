@@ -121,7 +121,7 @@ static RCoreHelpMessage help_msg_p6 = {
 
 static RCoreHelpMessage help_msg_pF = {
 	"Usage: pF[apdbA][*vqj]", "[len]", "parse ASN1, PKCS, X509, DER, protobuf, axml",
-	"pFa", "[jq] [len]", "decode ASN1/DER from current block (PEM is B64(DER))",
+	"pFa", "[jqt] [len]", "decode ASN1/DER from current block (PEM is B64(DER))",
 	"pFA", "[j] [len]", "decode Android Binary XML from current block",
 	"pFb", "[vj] [len]", "decode raw proto buffers in (verbose, JSON) format",
 	"pFB", "[j] [len]", "decode iOS Binary PLIST from current block",
@@ -517,19 +517,22 @@ static RCoreHelpMessage help_msg_pif = {
 };
 
 static RCoreHelpMessage help_msg_po = {
-	"Usage:", "po[24aAdlmorsx]", " [hexpairs] @ addr[!bsize] (see also `poke`)",
+	"Usage:", "po[24aAdlmorsxS]", " [hexpairs] @ addr[!bsize] (see also `poke`)",
 	"po[24aAdlmorsx]", "", "without hexpair values, clipboard is used",
 	"po2", " [val]", "2=  2 byte endian swap",
 	"po4", " [val]", "4=  4 byte endian swap",
 	"poa", " [val]", "+=  addition (f.ex: poa 0102)",
 	"poA", " [val]", "&=  and",
 	"pod", " [val]", "/=  divide",
+	"poD", " [algo] [key] [iv]", "Print block decryption",
+	"poE", " [algo] [key] [iv]", "Print block encryption",
 	"pol", " [val]", "<<= shift left",
 	"pom", " [val]", "*=  multiply",
 	"poo", " [val]", "|=  or",
 	"por", " [val]", ">>= shift right",
 	"pos", " [val]", "-=  substraction",
 	"pox", " [val]", "^=  xor  (f.ex: pox 0x90)",
+	"poS", " [algo] [key]", "Compute and print block signature",
 	NULL
 };
 
@@ -542,12 +545,11 @@ static RCoreHelpMessage help_msg_pq = {
 
 static RCoreHelpMessage help_msg_ps = {
 	"Usage:", "ps[abijqpsuwWxz+] [len]", "Print String (optionally specify the length)",
-	"ps", "", "print string until a first non-printable character",
+	"ps", "[j]", "print string until a first non-printable character",
 	"ps+", "[j]", "print libc++ std::string (same-endian, ascii, zero-terminated)",
 	"psa", "", "print any type of string (psp/psw/psW/psz/..)",
 	"psb", "", "print strings in current block",
 	"psi", "", "print string inside curseek",
-	"psj", "", "print string in JSON format",
 	"psn", "[l] [len]", "print string until newline",
 	"psp", "[?][j]", "print pascal string",
 	"psq", "", "alias for pqs",
@@ -1311,6 +1313,9 @@ R_API void r_core_set_asm_configs(RCore *core, char *arch, ut32 bits, int segoff
 static int cmd_pdu(RCore *core, const char *input) {
 	int ret = 0;
 	const char *sep = strchr (input, ' ');
+	if (!sep) {
+		sep = strstr (input, "..");
+	}
 	const char *arg = sep? r_str_trim_head_ro (sep): NULL;
 
 	ut64 addr = core->offset;
@@ -1330,8 +1335,14 @@ static int cmd_pdu(RCore *core, const char *input) {
 			r_core_cmd_help_match (core, help_msg_pdu, "pdua");
 			break;
 		}
-		ut64 to = r_num_math (core->num, arg);
-		if (!to) {
+		ut64 to = 0;
+		if (r_str_startswith (arg, "..")) {
+			to = r_num_tail (core->num, core->offset, arg + 2);
+			to++; // one more
+		} else {
+			to = r_num_math (core->num, arg);
+		}
+		if (!to || r_num_failed (core->num)) {
 			R_LOG_ERROR ("Couldn't parse address \"%s\"", arg);
 			ret = 1;
 			break;
@@ -1480,6 +1491,11 @@ static void cmd_print_fromage(RCore *core, const char *input, const ut8* data, i
 	case 'a': // "pFa" // DER/ASN1 encoding
 		{
 			int fmt = input[1];
+
+			if (fmt == 't' && !r_config_get_b (core->config, "scr.utf8")) {
+				R_LOG_ERROR ("Tree view requires utf8 support");
+				break;
+			}
 			RAsn1 *a = r_asn1_new (data, size, fmt);
 			// RASN1Object *asn1 = r_asn1_object_parse (data, data, size, fmt);
 			if (a) {
@@ -1829,8 +1845,8 @@ static int whatbpos(const char *arg) {
 	return bpos;
 }
 
-static void r_core_cmd_print_binformat(RCore *core, const char *arg, int mode) {
-	const char *fmt = arg;
+static void pfb(RCore *core, const char *arg, int mode) {
+	const char *fmt = r_str_trim_head_ro (arg);
 	int n = 0;
 	char *names = strchr (fmt, ' ');
 	const bool be = r_config_get_b (core->config, "cfg.bigendian");
@@ -1857,6 +1873,10 @@ static void r_core_cmd_print_binformat(RCore *core, const char *arg, int mode) {
 	} else if (mode == PFB_QUI) {
 		ut64 bv = 0;
 		int maxpos = whatbpos (arg);
+		if (maxpos < 0 || maxpos > 63) {
+			R_LOG_ERROR ("invalid bit position");
+			return;
+		}
 		for (i = 0; i < maxpos; i++) {
 			bool v = read_val (bm, i, 1);
 			if (v) {
@@ -1868,6 +1888,13 @@ static void r_core_cmd_print_binformat(RCore *core, const char *arg, int mode) {
 			}
 		}
 		r_cons_printf ("0x%08"PFMT64x":", bv);
+	}
+	if (!strchr (arg, 'b')) {
+		R_LOG_ERROR ("pfb format requires at least one 'b'");
+		r_list_free (lart);
+		r_bitmap_free (bm);
+		pj_free (pj);
+		return;
 	}
 	while (*arg && *arg != ' ') {
 		if (isdigit (*arg)) {
@@ -2038,6 +2065,35 @@ static void r_core_cmd_print_binformat(RCore *core, const char *arg, int mode) {
 	r_list_free (lnames);
 }
 
+static void cmd_pfb(RCore *core, const char *_input) {
+	switch (_input[2]) {
+	case ' ':
+		pfb (core, r_str_trim_head_ro (_input + 2), PFB_ART);
+		break;
+	case 'q': // "pfbq"
+		pfb (core, r_str_trim_head_ro (_input + 3), PFB_QUI);
+		break;
+	case 'j': // "pfbj"
+		pfb (core, r_str_trim_head_ro (_input + 3), PFB_JSN);
+		break;
+	case 'c': // "pfbc"
+		pfb (core, r_str_trim_head_ro (_input + 3), PFB_COD);
+		break;
+	case 'd': // "pfbd"
+		pfb (core, r_str_trim_head_ro (_input + 3), PFB_DBG);
+		break;
+	case '?':
+		r_core_cmd_help (core, help_msg_pfb);
+		break;
+	case 0:
+		R_LOG_ERROR ("pfb requires an argument. Check pfb? for help");
+		break;
+	default:
+		r_core_return_invalid_command (core, "pfb", _input[2]);
+		break;
+	}
+}
+
 static void cmd_print_format(RCore *core, const char *_input, const ut8* block, int len) {
 	char *input = NULL;
 	bool v2 = false;
@@ -2128,21 +2184,7 @@ static void cmd_print_format(RCore *core, const char *_input, const ut8* block, 
 		}
 		return;
 	case 'b': // "pfb"
-		if (_input[2] == ' ') {
-			r_core_cmd_print_binformat (core, r_str_trim_head_ro (_input + 2), PFB_ART);
-		} else if (_input[2] == 'q') { // "pfbq"
-			r_core_cmd_print_binformat (core, r_str_trim_head_ro (_input + 3), PFB_QUI);
-		} else if (_input[2] == 'j') { // "pfbj"
-			r_core_cmd_print_binformat (core, r_str_trim_head_ro (_input + 3), PFB_JSN);
-		} else if (_input[2] == 'c') { // "pfbc"
-			r_core_cmd_print_binformat (core, r_str_trim_head_ro (_input + 3), PFB_COD);
-		} else if (_input[2] == 'd') { // "pfbd"
-			r_core_cmd_print_binformat (core, r_str_trim_head_ro (_input + 3), PFB_DBG);
-		} else if (_input[2] == '?') {
-			r_core_cmd_help (core, help_msg_pfb);
-		} else {
-			r_core_return_invalid_command (core, "pfb", _input[2]);
-		}
+		cmd_pfb (core, _input);
 		return;
 	case 'o': // "pfo"
 		if (_input[2] == '?') {
@@ -3277,6 +3319,57 @@ static int cmd_print_pxA(RCore *core, int len, const char *input) {
 	return true;
 }
 
+static void print_encrypted_block(RCore *core, const char *algo, const char *key, int direction, const char *iv) {
+	int keylen = 0;
+	ut8 *binkey = NULL;
+	if (!strncmp (key, "s:", 2)) {
+		binkey = (ut8 *)strdup (key + 2);
+		keylen = strlen (key + 2);
+	} else {
+		binkey = (ut8 *)strdup (key);
+		keylen = r_hex_str2bin (key, binkey);
+	}
+	if (!binkey) {
+		return;
+	}
+	if (keylen < 1) {
+		const char *mode = (!direction)? "Encryption": "Decryption";
+		R_LOG_ERROR ("%s key not defined", mode);
+		free (binkey);
+		return;
+	}
+	RCryptoJob *cj = r_crypto_use (core->crypto, algo);
+	if (cj && cj->h->type == R_CRYPTO_TYPE_ENCRYPT) {
+		if (r_crypto_job_set_key (cj, binkey, keylen, 0, direction)) {
+			if (iv) {
+				ut8 *biniv = malloc (strlen (iv) + 1);
+				int ivlen = r_hex_str2bin (iv, biniv);
+				if (ivlen < 1) {
+					ivlen = strlen (iv);
+					strcpy ((char *)biniv, iv);
+				}
+				if (!r_crypto_job_set_iv (cj, biniv, ivlen)) {
+					R_LOG_ERROR ("Invalid IV");
+					return;
+				}
+			}
+			r_crypto_job_update (cj, (const ut8 *)core->block, core->blocksize);
+
+			int result_size = 0;
+			ut8 *result = r_crypto_job_get_output (cj, &result_size);
+			if (result) {
+				r_print_bytes (core->print, result, result_size, "%02x");
+				free (result);
+			}
+		}
+		free (cj);
+	} else {
+		R_LOG_ERROR ("Unknown %s algorithm '%s'", ((!direction)? "encryption": "decryption"), algo);
+	}
+	free (binkey);
+	return;
+}
+
 static void cmd_print_op(RCore *core, const char *input) {
 	ut8 *buf = NULL;
 	if (!input[0]) {
@@ -3310,6 +3403,67 @@ static void cmd_print_op(RCore *core, const char *input) {
 			r_core_cmd_help (core, help_msg_po);
 		}
 		break;
+	case 'S': { // "poS"
+		char *cmd = strdup (input);
+		RList *args = r_str_split_list (cmd, " ", 0);
+		char *algo = NULL;
+		if (args) {
+			algo = r_list_get_n (args, 1);
+		}
+		if (!args || !algo) {
+			r_crypto_list (core->crypto, r_cons_printf, 0 | (int)R_CRYPTO_TYPE_SIGNATURE << 8);
+			r_core_cmd_help_match (core, help_msg_po, "poS");
+			break;
+		}
+		RCryptoJob *cj = r_crypto_use (core->crypto, algo);
+		if (cj && cj->h->type == R_CRYPTO_TYPE_SIGNATURE) {
+			char *key = r_list_get_n (args, 2);
+			ut8 *binkey = (ut8 *)strdup (key);
+			int keylen = r_hex_str2bin (key, binkey);
+			if (!keylen) {
+				R_LOG_ERROR ("Invalid key");
+				break;
+			}
+			if (!r_crypto_job_set_key (cj, binkey, keylen, 0, R_CRYPTO_DIR_ENCRYPT)) {
+				break;
+			}
+			r_crypto_job_update (cj, (const ut8 *)core->block, core->blocksize);
+
+			int result_size = 0;
+			ut8 *result = r_crypto_job_get_output (cj, &result_size);
+			if (result) {
+				r_print_bytes (core->print, result, result_size, "%02x");
+				free (result);
+			}
+		} else {
+			R_LOG_ERROR ("Unsupported signature algorithm: %s", algo);
+		}
+		break;
+	}
+	case 'D': // "poD"
+	case 'E': { // "poE"
+		int direction = (input[1] == 'E')? R_CRYPTO_DIR_ENCRYPT: R_CRYPTO_DIR_DECRYPT;
+		char *cmd = strdup (input);
+		RList *args = r_str_split_list (cmd, " ", 0);
+		char *algo = NULL;
+		if (args) {
+			algo = r_list_get_n (args, 1);
+		}
+		if (!args || !algo) {
+			r_crypto_list (core->crypto, r_cons_printf, 0 | (int)R_CRYPTO_TYPE_ENCRYPT << 8);
+			r_core_cmd_help_match_spec (core, help_msg_po, "po", input[1]);
+			break;
+		}
+		char *key = r_list_get_n (args, 2);
+		if (!key) {
+			const char *mode = (direction == R_CRYPTO_DIR_ENCRYPT)? "Encryption": "Decryption";
+			R_LOG_ERROR ("%s key not defined", mode);
+			return;
+		}
+		char *iv = r_list_get_n (args, 3);
+		print_encrypted_block (core, algo, key, direction, iv);
+		break;
+	}
 	case '\0':
 	case '?':
 	default:
@@ -3752,7 +3906,7 @@ restore_conf:
 }
 
 static bool cmd_print_ph(RCore *core, const char *input) {
-	char algo[128];
+	char *algo = NULL;
 	ut32 osize = 0, len = core->blocksize;
 	int pos = 0, handled_cmd = false;
 
@@ -3767,9 +3921,15 @@ static bool cmd_print_ph(RCore *core, const char *input) {
 		r_crypto_free (cry);
 		return true;
 	}
-	if (i0 == 'j') {
+	if (i0 == 'j') { // "phj"
 		RCrypto *cry = r_crypto_new ();
-		r_crypto_list (cry, NULL, 'J' | (int)R_CRYPTO_TYPE_HASHER << 8);
+		r_crypto_list (cry, r_cons_printf, 'j' | (int)R_CRYPTO_TYPE_ALL << 8);
+		r_crypto_free (cry);
+		return true;
+	}
+	if (i0 == 'J') { // "phJ"
+		RCrypto *cry = r_crypto_new ();
+		r_crypto_list (cry, r_cons_printf, 'J' | (int)R_CRYPTO_TYPE_HASHER << 8);
 		r_crypto_free (cry);
 		return true;
 	}
@@ -3777,35 +3937,47 @@ static bool cmd_print_ph(RCore *core, const char *input) {
 		input++;
 	}
 	input = r_str_trim_head_ro (input);
-	const char *ptr = strchr (input, ' ');
-	r_str_ncpy (algo, input, sizeof (algo) - 1);
-	if (ptr && ptr[1]) { // && r_num_is_valid_input (core->num, ptr + 1)) {
-		int nlen = r_num_math (core->num, ptr + 1);
-		if (nlen > 0) {
-			len = nlen;
-		}
+	char *cmd = strdup (input);
+	RList *args = r_str_split_list (cmd, " ", 0);
+	if (args) {
+		algo = r_list_get_n (args, 0);
+	}
+	char *len_str = r_list_get_n (args, 1);
+	if (len_str) {
+		len = r_num_math (core->num, len_str);
 		osize = core->blocksize;
-		if (nlen > core->blocksize) {
-			r_core_block_size (core, nlen);
-			if (nlen != core->blocksize) {
+		if (len > core->blocksize) {
+			r_core_block_size (core, len);
+			if (len != core->blocksize) {
 				R_LOG_ERROR ("Invalid block size");
 				r_core_block_size (core, osize);
 				return false;
 			}
 			r_core_block_read (core);
 		}
-	} else if (!ptr || !*(ptr + 1)) {
+	} else {
 		osize = len;
 	}
-	/* TODO: Simplify this spaguetti monster */
-	while (osize > 0 && hash_handlers[pos].name) {
-		if (!r_str_ccmp (hash_handlers[pos].name, input, ' ')) {
-			hash_handlers[pos].handler (core->block, len);
-			handled_cmd = true;
-			break;
+	RCryptoJob *cj = r_crypto_use (core->crypto, algo);
+	if (cj && cj->h->type == R_CRYPTO_TYPE_HASHER) {
+		r_crypto_job_update (cj, (const ut8 *)core->block, len);
+		int result_size = 0;
+		ut8 *result = r_crypto_job_get_output (cj, &result_size);
+		if (result) {
+			hexprint (result, result_size);
 		}
-		pos++;
+	} else {
+		/* TODO: Simplify this spaguetti monster */
+		while (osize > 0 && hash_handlers[pos].name) {
+			if (!r_str_ccmp (hash_handlers[pos].name, input, ' ')) {
+				hash_handlers[pos].handler (core->block, len);
+				handled_cmd = true;
+				break;
+			}
+			pos++;
+		}
 	}
+
 	if (osize) {
 		r_core_block_size (core, osize);
 	}
@@ -6370,7 +6542,8 @@ static int cmd_print(void *data, const char *input) {
 		r_core_seek (core, off, SEEK_SET);
 		r_core_block_read (core);
 	}
-	switch (*input) {
+	const char ch0 = *input;
+	switch (ch0) {
 	case 'w': // "pw"
 		if (input[1] == 'n') {
 			cmd_print_pwn (core);
@@ -7661,17 +7834,17 @@ static int cmd_print(void *data, const char *input) {
 				// TODO: replace pz? help text with "See also"
 				r_core_cmd_help (core, help_msg_prc);
 				break;
-			case '=':
+			case '=': // "prc="
 				if (input[3] == '?') {
 					r_core_cmd_help (core, help_msg_p_equal);
 				} else {
 					cmd_prc_zoom (core, input + 2);
 				}
 				break;
-			case 'b':
+			case 'b': // "prcb"
 				cmd_prcn (core, block, len, true);
 				break;
-			case 'n':
+			case 'n': // "prcn"
 				cmd_prcn (core, block, len, false);
 				break;
 			default:
@@ -8785,7 +8958,7 @@ static int cmd_print(void *data, const char *input) {
 		if (*input && input[1] == 'j') {
 			r_cons_cmd_help_json (help_msg_p);
 		} else {
-			r_core_return_invalid_command (core, "p", *input);
+			r_core_return_invalid_command (core, "p", ch0); // *input);
 		}
 		break;
 	}

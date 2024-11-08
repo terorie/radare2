@@ -25,8 +25,10 @@ RUN
 
 NAME=$FB (fcn-begin)
 FILE=malloc://1024
+ARGS=-1
 CMDS=<<EOF
 e asm.arch=x86
+e asm.bits=32
 s 42
 af
 s 44
@@ -145,18 +147,18 @@ EXPECT=<<EOF
 EOF
 RUN
 
-NAME=$j (malloc)
+NAME=$ij (malloc)
 FILE=malloc://1024
 CMDS=<<EOF
 e asm.bits=32
 e asm.arch = x86
 e anal.arch = x86
 wa jmp 0x30
-?v $j
+?v $ij
 wa jz 0x01
-?v $j
+?v $ij
 wa xor eax, eax
-?v $j
+?v $ij
 ?e
 EOF
 EXPECT=<<EOF
@@ -167,18 +169,18 @@ EXPECT=<<EOF
 EOF
 RUN
 
-NAME=$f (malloc)
+NAME=$if (malloc)
 FILE=malloc://1024
 CMDS=<<EOF
 e asm.bits=32
 e asm.arch = x86
 e anal.arch = x86
 wx eb2e
-?v $f
+?v $if
 wx 0f84fbffffff
-?v $f
+?v $if
 wx 31c0
-?v $f
+?v $if
 EOF
 EXPECT=<<EOF
 0xffffffffffffffff
@@ -187,15 +189,15 @@ EXPECT=<<EOF
 EOF
 RUN
 
-NAME=$m (malloc)
+NAME=$ir (malloc)
 FILE=malloc://1024
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=32
 wa mov eax, [0x500]
-?v $m
+?v $ir
 wa mov eax, ebx
-?v $m
+?v $ir
 ?e
 EOF
 EXPECT=<<EOF
@@ -205,18 +207,18 @@ EXPECT=<<EOF
 EOF
 RUN
 
-NAME=$l (malloc)
+NAME=$is (malloc)
 FILE=malloc://1024
 CMDS=<<EOF
 e asm.bits=32
 e asm.arch = x86
 e anal.arch = x86
 wa xor eax, eax
-?v $l
+?v $is
 wa mov esp, 0x1
-?v $l
+?v $is
 wx c3
-?v $l
+?v $is
 EOF
 EXPECT=<<EOF
 0x2
@@ -231,13 +233,13 @@ CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=32
 wa inc eax
-?v $e
+?v $ie
 wa jmp 0x01
-?v $e
+?v $ie
 wa ret
-?v $e
+?v $ie
 wa call 0x01
-?v $e
+?v $ie
 EOF
 EXPECT=<<EOF
 0x0
@@ -275,8 +277,8 @@ unit    8
 segment 0000:0008
 string  "\b"
 fvalue  8.0
-float   0.000000f
-double  0.000000
+float   0.000000000000000f
+double  0.000000000000000
 binary  0b00001000
 base36  0_8
 ternary 0t22
@@ -289,8 +291,8 @@ unit    0
 segment 0000:0000
 string  "\0"
 fvalue  0.0
-float   0.000000f
-double  0.000000
+float   0.000000000000000f
+double  0.000000000000000
 binary  0b00000000
 base36  0_0
 ternary 0t0
@@ -350,8 +352,8 @@ unit    123
 segment 0000:007b
 string  "{"
 fvalue  123.0
-float   0.000000f
-double  0.000000
+float   0.000000000000000f
+double  0.000000000000000
 binary  0b01111011
 base36  0_3f
 ternary 0t11120

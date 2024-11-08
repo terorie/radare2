@@ -38,7 +38,7 @@ typedef enum r_plugin_status_t {
 	R_PLUGIN_STATUS_INCOMPLETE = 1,
 	R_PLUGIN_STATUS_BASIC = 2,
 	R_PLUGIN_STATUS_OK = 3,
-	R_PLUGIN_STATUS_GOOD= 4,
+	R_PLUGIN_STATUS_GOOD = 4,
 	R_PLUGIN_STATUS_COMPLETE = 5,
 } RPluginStatus;
 
@@ -48,6 +48,8 @@ typedef struct r_plugin_meta_t {
 	char *author;
 	char *version;
 	char *license;
+// char *contact // email/mastodon/addr
+// char *copyright // 2024-2025 ..?
 	RPluginStatus status;
 } RPluginMeta;
 // rename to RLibPluginMeta ?

@@ -1456,18 +1456,20 @@ static RDebugMap *get_closest_map(RCore *core, ut64 addr) {
 
 static bool cmd_dmh(RCore *core, const char *input) {
 	const char *m = r_config_get (core->config, "dbg.malloc");
-	if (m && !strcmp ("glibc", m)) {
+	if (!m || R_STR_ISEMPTY (input)) {
+		return false;
+	}
+	if (!strcmp ("glibc", m)) {
 #if __linux__ && __GNU_LIBRARY__ && __GLIBC__ && __GLIBC_MINOR__
 		if (core->rasm->config->bits == 64) {
-			dmh_glibc_64 (core, input + 1);
-		} else {
-			dmh_glibc_32 (core, input + 1);
+			return dmh_glibc_64 (core, input + 1);
 		}
+		return dmh_glibc_32 (core, input + 1);
 #else
 		R_LOG_WARN ("glibc is not supported for this platform");
 #endif
 #if HAVE_JEMALLOC
-	} else if (m && !strcmp ("jemalloc", m)) {
+	} else if (!strcmp ("jemalloc", m)) {
 		if (core->rasm->config->bits == 64) {
 			dmh_jemalloc_64 (core, input + 1);
 		} else {
@@ -2525,10 +2527,10 @@ static void __tableRegList(RCore *core, RReg *reg, const char *str) {
 }
 
 static void cmd_debug_reg(RCore *core, const char *str) {
-	char *arg;
-	struct r_reg_item_t *r;
-	const char *name, *use_color;
 	size_t i;
+	char *arg;
+	RRegItem *r;
+	const char *name;
 	int size, type = R_REG_TYPE_GPR;
 	int bits = (core->dbg->bits & R_SYS_BITS_64)? 64: 32;
 	int use_colors = r_config_get_i (core->config, "scr.color");
@@ -2536,13 +2538,9 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 	if (newbits > 0) {
 		bits = newbits;
 	}
-	if (use_colors) {
 #undef ConsP
 #define ConsP(x) (core->cons && core->cons->context->pal.x)? core->cons->context->pal.x
-		use_color = ConsP(creg): Color_BWHITE;
-	} else {
-		use_color = NULL;
-	}
+	const char *use_color = use_colors? (ConsP(creg): Color_BWHITE): NULL;
 	if (!str) {
 		str = "";
 	}
@@ -2582,6 +2580,9 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 			} else {
 			}
 		}
+		break;
+	case 'a':
+		r_core_cmdf (core, "ara%s", str + 1);
 		break;
 	case '-': // "dr-"
 		r_debug_reg_list (core->dbg, R_REG_TYPE_GPR, bits, NULL, '-', 0);
@@ -3301,6 +3302,10 @@ static void cmd_debug_reg(RCore *core, const char *str) {
 				showreg (core, str + 1);
 			}
 		}
+		break;
+	default:
+		r_core_return_invalid_command (core, "dr", str[0]);
+		break;
 	}
 }
 
@@ -4125,7 +4130,7 @@ static void trace_traverse(RTree *t) {
 	RTreeVisitor vis = {0};
 
 	/* clear the line on stderr, because somebody has written there */
-	fprintf (stderr, "\x1b[2K\r");
+	eprintf (R_CONS_CLEAR_LINE"\r");
 	fflush (stderr);
 	vis.pre_visit = (RTreeNodeVisitCb)trace_traverse_pre;
 	r_tree_dfs (t, &vis);

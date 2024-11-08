@@ -976,14 +976,14 @@ static ut64 r_io_dsc_object_seek(RIO *io, RIODscObject *dsc, ut64 offset, int wh
 	ut64 off_global;
 
 	switch (whence) {
-		case SEEK_SET:
-			off_global = offset;
+		case R_IO_SEEK_SET:
+			off_global = offset;			//XXX
 			break;
-		case SEEK_CUR:
-			off_global = io->off + offset;
+		case R_IO_SEEK_CUR:
+			off_global = io->off + offset;		//XXX
 			break;
-		case SEEK_END:
-			off_global = dsc->total_size + offset;
+		case R_IO_SEEK_END:
+			off_global = dsc->total_size + offset;	//XXX
 			break;
 		default:
 			return UT64_MAX;
@@ -1904,7 +1904,7 @@ RIOPlugin r_io_plugin_dsc = {
 	.meta = {
 		.name = "dsc",
 		.desc = "Open dyld shared library caches",
-		.license = "LGPL3",
+		.license = "LGPL-3.0-only",
 	},
 	.uris = URL_SCHEME,
 	.open = __open,

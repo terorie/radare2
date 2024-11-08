@@ -70,7 +70,7 @@ static RCoreHelpMessage help_msg_wa = {
 	"wan", " jmp 0x8080", "write instruction(s) nopping the trailing bytes",
 	"wa+", " nop", "write a nop and seek after it (use 7wa+nop to write 7 consecutive nops)",
 	"wa*", " mov eax, 33", "show 'wx' op with hexpair bytes of assembled opcode",
-	"\"wa nop;nop\"", "" , "assemble more than one instruction (note the quotes)",
+	"'wa nop;nop", "" , "assemble more than one instruction (note the single quote)",
 	"waf", " f.asm" , "assemble file and write bytes",
 	"waF", " f.asm", "assemble file and write bytes and show 'wx' op with hexpair bytes of assembled code",
 	"waF*", " f.asm", "assemble file and show 'wx' op with hexpair bytes of assembled code",
@@ -132,6 +132,7 @@ static RCoreHelpMessage help_msg_wo = {
 	"wor", " [val]", ">>= shift right",
 	"woR", "", "random bytes (alias for 'wr $b')",
 	"wos", " [val]", "-= substraction",
+	"woS", " [algo] [key]", "sign the current block with given algo and key",
 	"wow", " [val]", "== write looped value (alias for 'wb')",
 	"wox", " [val]", "^= xor (f.ex: wox 0x90)",
 	NULL
@@ -240,10 +241,8 @@ R_API int cmd_write_hexpair(RCore* core, const char* pairs) {
 	return len;
 }
 
-static bool encrypt_or_decrypt_block(RCore *core, const char *algo, const char *key, int direction, const char *iv) {
-	//TODO: generalise no_key_mode for all non key encoding/decoding.
+static void write_encrypted_block(RCore *core, const char *algo, const char *key, int direction, const char *iv) {
 	int keylen = 0;
-	bool no_key_mode = !strcmp ("base64", algo) || !strcmp ("base91", algo) || !strcmp ("punycode", algo);
 	ut8 *binkey = NULL;
 	if (!strncmp (key, "s:", 2)) {
 		binkey = (ut8*)strdup (key + 2);
@@ -253,16 +252,16 @@ static bool encrypt_or_decrypt_block(RCore *core, const char *algo, const char *
 		keylen = r_hex_str2bin (key, binkey);
 	}
 	if (!binkey) {
-		return false;
+		return;
 	}
-	if (!no_key_mode && keylen < 1) {
-		const char *mode = (!direction)? "Encryption": "Decryption";
+	if (keylen < 1) {
+		const char *mode = (direction == R_CRYPTO_DIR_ENCRYPT)? "Encryption": "Decryption";
 		R_LOG_ERROR ("%s key not defined. Use -S [key]", mode);
 		free (binkey);
-		return false;
+		return;
 	}
 	RCryptoJob *cj = r_crypto_use (core->crypto, algo);
-	if (cj) {
+	if (cj && cj->h->type == R_CRYPTO_TYPE_ENCRYPT) {
 		if (r_crypto_job_set_key (cj, binkey, keylen, 0, direction)) {
 			if (iv) {
 				ut8 *biniv = malloc (strlen (iv) + 1);
@@ -273,7 +272,7 @@ static bool encrypt_or_decrypt_block(RCore *core, const char *algo, const char *
 				}
 				if (!r_crypto_job_set_iv (cj, biniv, ivlen)) {
 					R_LOG_ERROR ("Invalid IV");
-					return 0;
+					return;
 				}
 			}
 			r_crypto_job_update (cj, (const ut8*)core->block, core->blocksize);
@@ -287,15 +286,53 @@ static bool encrypt_or_decrypt_block(RCore *core, const char *algo, const char *
 				R_LOG_INFO ("Written %d byte(s)", result_size);
 				free (result);
 			}
-		} else {
-			R_LOG_ERROR ("Invalid key");
+		}
+		free (cj);
+	} else {
+		R_LOG_ERROR ("Unknown %s algorithm '%s'", ((direction == R_CRYPTO_DIR_ENCRYPT)? "encryption": "decryption"), algo);
+	}
+	free (binkey);
+	return;
+}
+
+static void write_block_signature(RCore *core, const char *algo, const char *key) {
+	int keylen = 0;
+	ut8 *binkey = NULL;
+	if (!strncmp (key, "s:", 2)) {
+		binkey = (ut8 *)strdup (key + 2);
+		keylen = strlen (key + 2);
+	} else {
+		binkey = (ut8 *)strdup (key);
+		keylen = r_hex_str2bin (key, binkey);
+	}
+	if (!binkey) {
+		return;
+	}
+	if (keylen < 1) {
+		R_LOG_ERROR ("Private key not defined");
+		free (binkey);
+		return;
+	}
+	RCryptoJob *cj = r_crypto_use (core->crypto, algo);
+	if (cj && cj->h->type == R_CRYPTO_TYPE_SIGNATURE) {
+		if (r_crypto_job_set_key (cj, binkey, keylen, 0, R_CRYPTO_DIR_ENCRYPT)) {
+			r_crypto_job_update (cj, (const ut8 *)core->block, core->blocksize);
+			int result_size = 0;
+			ut8 *result = r_crypto_job_get_output (cj, &result_size);
+			if (result) {
+				if (!r_core_write_at (core, core->offset, result, result_size)) {
+					R_LOG_ERROR ("write failed at 0x%08" PFMT64x, core->offset);
+				}
+				R_LOG_INFO ("Written %d byte(s)", result_size);
+				free (result);
+			}
 		}
 		free (binkey);
-		return 0;
+		return;
 	} else {
-		R_LOG_ERROR ("Unknown %s algorithm '%s'", ((!direction) ? "encryption" : "decryption") ,algo);
+		R_LOG_ERROR ("Unknown signature algorithm '%s'", algo);
 	}
-	return 1;
+	return;
 }
 
 static void cmd_write_bits(RCore *core, int set, ut64 val) {
@@ -391,7 +428,7 @@ static int cmd_wo(void *data, const char *input) {
 			}
 			algo = args;
 			if (R_STR_ISNOTEMPTY (algo) && key) {
-				encrypt_or_decrypt_block (core, algo, key, direction, iv);
+				write_encrypted_block (core, algo, key, direction, iv);
 			} else {
 				r_crypto_list (core->crypto, r_cons_printf, 0 | (int)R_CRYPTO_TYPE_ENCRYPT << 8);
 				r_core_cmd_help_match_spec (core, help_msg_wo, "wo", input[0]);
@@ -399,6 +436,26 @@ static int cmd_wo(void *data, const char *input) {
 			free (args);
 		}
 		break;
+		case 'S': // "woS" sign
+		{
+			const char *algo = NULL;
+			const char *key = NULL;
+			char *space, *args = strdup (r_str_trim_head_ro (input + 1));
+			space = strchr (args, ' ');
+			if (space) {
+				*space++ = 0;
+				key = space;
+				space = strchr (key, ' ');
+			}
+			algo = args;
+			if (R_STR_ISNOTEMPTY (algo) && key) {
+				write_block_signature (core, algo, key);
+			} else {
+				r_crypto_list (core->crypto, r_cons_printf, 0 | (int)R_CRYPTO_TYPE_SIGNATURE << 8);
+				r_core_cmd_help_match_spec (core, help_msg_wo, "wo", input[0]);
+			}
+			free (args);
+		} break;
 	case 'p': // debruijn patterns
 		switch (input[1]) {
 		case 'D': // "wopD"
@@ -2157,21 +2214,73 @@ repeat:
 
 static int cmd_wb(void *data, const char *input) {
 	RCore *core = (RCore *)data;
-	ut8 b = core->block[0];
-	char *ui = r_str_newf ("%sb", r_str_trim_head_ro (input));
-	int uil = strlen (ui) - 1;
-	int n = r_num_get (NULL, ui);
-	free (ui);
-	if (uil > 8) {
-		R_LOG_ERROR ("wb only operates on bytes");
-	} else if (uil > 0) {
-		int shift = 8 - uil;
-		b <<= shift;
-		b >>= shift;
-		b |= (n << shift);
-		r_io_write_at (core->io, core->offset, &b, 1);
-	} else {
+	int uil = strlen (input);
+	char c;
+	int i;
+
+	// Check that user provided some input
+	if (uil == 0) {
 		r_core_cmd_help_match (core, help_msg_w, "wb");
+		return 0;
+	}
+
+	// Check that user input only contains binary data
+	for (i = 0; i < uil; i++) {
+		c = input[i];
+		// Ignore whitespaces
+		if (isspace(c)) {
+			continue;
+		}
+		// Check that user input only contains ones and zeros
+		if (c != '0' && c != '1') {
+			R_LOG_ERROR ("wb operates only on binary data");
+			return 0;
+		}
+	}
+
+	// Iterate user input bitwise and write output every 8 bits
+	int bits_read = 0;
+	int block_offset = 0;
+	ut8 byte = 0;
+	for (i = 0; i < uil; i++) {
+		// Read a bit
+		c = input[i];
+
+		// Ignore whitespaces
+		if (isspace(c)) {
+			continue;
+		}
+
+		if (c == '1') {
+			// Bits are read and bytes constructed from most to
+			// least significant.
+			byte |= (1 << (7 - bits_read));
+		}
+		bits_read++;
+
+		// Write a byte if we've read 8 bits
+		if (bits_read % 8 == 0) {
+			r_io_write_at (
+				core->io,
+				core->offset + block_offset,
+				&byte,
+				1
+			);
+			block_offset++;
+			bits_read = 0;
+			byte = 0;
+		}
+	}
+
+	// Write any possible remaining ui bits
+	if (bits_read != 0) {
+		ut8 b = core->block[block_offset];
+		// Shift left and right to zero bits_read most significant bits
+		b <<= bits_read;
+		b >>= bits_read;
+		// Overwrite bits_read most significant bits and keep the rest
+		b |= byte;
+		r_io_write_at (core->io, core->offset + block_offset, &b, 1);
 	}
 
 	return 0;

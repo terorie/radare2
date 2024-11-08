@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2022 - pancake */
+/* radare - LGPL - Copyright 2022-2024 - pancake */
 
 #include <r_userconf.h>
 
@@ -73,15 +73,15 @@ static ut64 __lseek(RIO *io, RIODesc *fd, ut64 offset, int whence) {
 	}
 	const int size = arena->size;
 	switch (whence) {
-	case SEEK_SET:
+	case R_IO_SEEK_SET:
 		if (offset >= size) {
 			return size;
 		} else {
 			return offset;
 		}
-	case SEEK_CUR:
+	case R_IO_SEEK_CUR:
 		return io->off + offset;
-	case SEEK_END:
+	case R_IO_SEEK_END:
 		return size;
 	}
 	return io->off;
@@ -102,8 +102,9 @@ static char *__system(RIO *io, RIODesc *fd, const char *cmd) {
 RIOPlugin r_io_plugin_reg = {
 	.meta = {
 		.name = "reg",
+		.author = "pancake",
 		.desc = "read and write the register arena",
-		.license = "LGPL3",
+		.license = "LGPL-3.0-only",
 	},
 	.uris = "reg://",
 	.open = __open,

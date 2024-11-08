@@ -4,9 +4,6 @@
 
 #include <r_core.h>
 #include <r_vec.h>
-#if R2__UNIX__
-#include <signal.h>
-#endif
 
 #define DB core->sdb
 
@@ -109,15 +106,16 @@ static int getreloc_tree(void *incoming, void *in, void *user) {
 }
 
 R_API RBinReloc *r_core_getreloc(RCore *core, ut64 addr, int size) {
+	R_RETURN_VAL_IF_FAIL (core, NULL);
 	if (size < 1 || addr == UT64_MAX) {
 		return NULL;
 	}
 	RRBTree *relocs = r_bin_get_relocs (core->bin);
-	if (!relocs) {
-		return NULL;
+	if (R_LIKELY (relocs)) {
+		struct getreloc_t gr = { .vaddr = addr, .size = size };
+		return r_crbtree_find (relocs, &gr, getreloc_tree, NULL);
 	}
-	struct getreloc_t gr = { .vaddr = addr, .size = size };
-	return r_crbtree_find (relocs, &gr, getreloc_tree, NULL);
+	return NULL;
 }
 
 /* returns the address of a jmp/call given a shortcut by the user or UT64_MAX
@@ -126,6 +124,7 @@ R_API RBinReloc *r_core_getreloc(RCore *core, ut64 addr, int size) {
  * lowercase one. If is_asmqjmps_letter is false, the string should be a number
  * between 1 and 9 included. */
 R_API ut64 r_core_get_asmqjmps(RCore *core, const char *str) {
+	R_RETURN_VAL_IF_FAIL (core, UT64_MAX);
 	if (!core->asmqjmps) {
 		return UT64_MAX;
 	}
@@ -161,6 +160,7 @@ R_API ut64 r_core_get_asmqjmps(RCore *core, const char *str) {
  * The returned buffer needs to be freed
  */
 R_API char* r_core_add_asmqjmp(RCore *core, ut64 addr) {
+	R_RETURN_VAL_IF_FAIL (core, NULL);
 	bool found = false;
 	if (!core->asmqjmps) {
 		return NULL;
@@ -280,10 +280,8 @@ static ut64 numget(RCore *core, const char *k) {
 
 static bool __isMapped(RCore *core, ut64 addr, int perm) {
 	if (r_config_get_b (core->config, "cfg.debug")) {
-		// RList *maps = core->dbg->maps;
-		RDebugMap *map = NULL;
-		RListIter *iter = NULL;
-
+		RDebugMap *map;
+		RListIter *iter;
 		r_list_foreach (core->dbg->maps, iter, map) {
 			if (addr >= map->addr && addr < map->addr_end) {
 				if (perm > 0) {
@@ -297,7 +295,6 @@ static bool __isMapped(RCore *core, ut64 addr, int perm) {
 		}
 		return false;
 	}
-
 	return r_io_map_is_mapped (core->io, addr);
 }
 
@@ -333,7 +330,9 @@ R_API char *r_core_cmd_call_str_at(RCore *core, ut64 addr, const char *cmd) {
 	return retstr;
 }
 
+// R2_600 - return void
 R_API int r_core_bind(RCore *core, RCoreBind *bnd) {
+	R_RETURN_VAL_IF_FAIL (core && bnd, false);
 	bnd->core = core;
 	bnd->bphit = (RCoreDebugBpHit)r_core_debug_breakpoint_hit;
 	bnd->syshit = (RCoreDebugSyscallHit)r_core_debug_syscall_hit;
@@ -365,88 +364,6 @@ R_API RCore *r_core_cast(void *p) {
 	return (RCore*)p;
 }
 
-static ut64 getref(RCore *core, int n, char t, int type) {
-	RAnalFunction *fcn = r_anal_get_fcn_in (core->anal, core->offset, 0);
-	if (!fcn) {
-		return UT64_MAX;
-	}
-
-	RVecAnalRef *anal_refs = (t == 'r')
-		? r_anal_function_get_refs (fcn)
-		: r_anal_function_get_xrefs (fcn);
-	int i = 0;
-	if (anal_refs) {
-		RAnalRef *r;
-		R_VEC_FOREACH (anal_refs, r) {
-			if (r->type == type) {
-				if (i == n) {
-					ut64 addr = r->addr;
-					RVecAnalRef_free (anal_refs);
-					return addr;
-				}
-				i++;
-			}
-		}
-	}
-	RVecAnalRef_free (anal_refs);
-	return UT64_MAX;
-}
-
-static ut64 bbInstructions(RAnalFunction *fcn, ut64 addr) {
-	RListIter *iter;
-	RAnalBlock *bb;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (R_BETWEEN (bb->addr, addr, bb->addr + bb->size - 1)) {
-			return bb->ninstr;
-		}
-	}
-	return UT64_MAX;
-}
-
-static ut64 bbBegin(RAnalFunction *fcn, ut64 addr) {
-	RListIter *iter;
-	RAnalBlock *bb;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (R_BETWEEN (bb->addr, addr, bb->addr + bb->size - 1)) {
-			return bb->addr;
-		}
-	}
-	return UT64_MAX;
-}
-
-static ut64 bbJump(RAnalFunction *fcn, ut64 addr) {
-	RListIter *iter;
-	RAnalBlock *bb;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (R_BETWEEN (bb->addr, addr, bb->addr + bb->size - 1)) {
-			return bb->jump;
-		}
-	}
-	return UT64_MAX;
-}
-
-static ut64 bbFail(RAnalFunction *fcn, ut64 addr) {
-	RListIter *iter;
-	RAnalBlock *bb;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (R_BETWEEN (bb->addr, addr, bb->addr + bb->size - 1)) {
-			return bb->fail;
-		}
-	}
-	return UT64_MAX;
-}
-
-static ut64 bbSize(RAnalFunction *fcn, ut64 addr) {
-	RListIter *iter;
-	RAnalBlock *bb;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (R_BETWEEN (bb->addr, addr, bb->addr + bb->size - 1)) {
-			return bb->size;
-		}
-	}
-	return 0;
-}
-
 static const char *str_callback(RNum *user, ut64 off, int *ok) {
 	RFlag *f = (RFlag*)user;
 	if (ok) {
@@ -464,495 +381,7 @@ static const char *str_callback(RNum *user, ut64 off, int *ok) {
 	return NULL;
 }
 
-static ut64 numvar_instruction_backward(RCore *core, const char *input) {
-	// N forward instructions
-	int i, ret;
-	int n = 1;
-	if (isdigit ((unsigned char)input[0])) {
-		n = atoi (input);
-	} else if (input[0] == '{') {
-		n = atoi (input + 1);
-	}
-	if (n < 1) {
-		R_LOG_ERROR ("Invalid negative value");
-		n = 1;
-	}
-	int numinstr = n;
-	// N previous instructions
-	ut64 addr = core->offset;
-	ut64 val = addr;
-	if (r_core_prevop_addr (core, core->offset, numinstr, &addr)) {
-		val = addr;
-	} else {
-		ut8 data[32];
-		addr = core->offset;
-		const int mininstrsize = r_anal_archinfo (core->anal, R_ARCH_INFO_MINOP_SIZE);
-		for (i = 0; i < numinstr; i++) {
-			ut64 prev_addr = r_core_prevop_addr_force (core, addr, 1);
-			if (prev_addr == UT64_MAX) {
-				prev_addr = addr - mininstrsize;
-			}
-			if (prev_addr == UT64_MAX || prev_addr >= core->offset) {
-				break;
-			}
-			RAnalOp op = {0};
-			ret = r_anal_op (core->anal, &op, prev_addr, data,
-				sizeof (data), R_ARCH_OP_MASK_BASIC);
-			if (ret < 1) {
-				ret = 1;
-			}
-			if (op.size < mininstrsize) {
-				op.size = mininstrsize;
-			}
-			val -= op.size;
-			r_anal_op_fini (&op);
-			addr = prev_addr;
-		}
-	}
-	return val;
-}
-
-static ut64 numvar_instruction(RCore *core, const char *input) {
-	ut64 addr = core->offset;
-	// N forward instructions
-	ut8 data[32];
-	int i;
-	ut64 val = addr;
-	int n = 1;
-	if (input[0] == '{') {
-		n = atoi (input + 1);
-	}
-	if (n < 1) {
-		R_LOG_ERROR ("Invalid negative value");
-		n = 1;
-	}
-	for (i = 0; i < n; i++) {
-		r_io_read_at (core->io, val, data, sizeof (data));
-		RAnalOp op = {0};
-		int ret = r_anal_op (core->anal, &op, val, data,
-			sizeof (data), R_ARCH_OP_MASK_BASIC);
-		if (ret < 1) {
-			R_LOG_DEBUG ("cannot decode at 0x%08"PFMT64x, val);
-		}
-		val += op.size;
-		r_anal_op_fini (&op);
-	}
-	return val;
-
-}
-
-static ut64 num_callback(RNum *userptr, const char *str, int *ok) {
-	RCore *core = (RCore *)userptr; // XXX ?
-	RAnalFunction *fcn;
-	char *ptr, *bptr, *out = NULL;
-	RFlagItem *flag;
-	RBinSection *s;
-	RAnalOp op;
-	ut64 ret = 0;
-	r_anal_op_init (&op);
-
-	if (ok) {
-		*ok = false;
-	}
-	switch (*str) {
-	case '.':
-		if (str[1] == '.') {
-			if (ok) {
-				*ok = true;
-			}
-			return r_num_tail (core->num, core->offset, str + 2);
-		}
-		if (core->num->nc.curr_tok == '+') {
-			ut64 off = core->num->nc.number_value.n;
-			if (!off) {
-				off = core->offset;
-			}
-			RAnalFunction *fcn = r_anal_get_function_at (core->anal, off);
-			if (fcn) {
-				if (ok) {
-					*ok = true;
-				}
-				ut64 dst = r_anal_function_get_label (fcn, str + 1);
-				if (dst == UT64_MAX) {
-					dst = fcn->addr;
-				}
-				st64 delta = dst - off;
-				if (delta < 0) {
-					core->num->nc.curr_tok = '-';
-					delta = off - dst;
-				}
-				return delta;
-			}
-		}
-		break;
-	case '[':
-{
-		ut64 n = 0LL;
-		int refsz = core->rasm->config->bits / 8;
-		const char *p = strchr (str, ':');
-		if (p) {
-			refsz = atoi (str + 1);
-			str = p;
-		}
-		// push state
-		if (str[0] && str[1]) {
-			const char *q;
-			char *o = strdup (str + 1);
-			if (o) {
-				q = r_num_calc_index (core->num, NULL);
-				if (q) {
-					if (r_str_replace_char (o, ']', 0)>0) {
-						n = r_num_math (core->num, o);
-						if (core->num->nc.errors) {
-							return 0;
-						}
-						r_num_calc_index (core->num, q);
-					}
-				}
-				free (o);
-			}
-		} else {
-			return 0;
-		}
-		// pop state
-		if (ok) {
-			*ok = 1;
-		}
-		ut8 buf[sizeof (ut64)] = {0};
-		(void)r_io_read_at (core->io, n, buf, R_MIN (sizeof (buf), refsz));
-		const bool be = R_ARCH_CONFIG_IS_BIG_ENDIAN (core->rasm->config);
-		switch (refsz) {
-		case 8:
-			return r_read_ble64 (buf, be);
-		case 4:
-			return r_read_ble32 (buf, be);
-		case 2:
-			return r_read_ble16 (buf, be);
-		case 1:
-			return r_read_ble8 (buf);
-		default:
-			R_LOG_ERROR ("Invalid reference size: %d (%s)", refsz, str);
-			return 0LL;
-		}
-}
-		break;
-	case '$':
-		if (ok) {
-			*ok = true;
-		}
-		switch (str[1]) {
-		case 'e':
-		case 'j':
-		case 'f':
-		case 'm':
-		case 'v':
-		case 'l':
-			r_anal_op_init (&op);
-			r_anal_op (core->anal, &op, core->offset, core->block, core->blocksize, R_ARCH_OP_MASK_BASIC);
-			r_anal_op_fini (&op); // we don't need strings or pointers, just values, which are not nullified in fini
-			break;
-		default:
-			break;
-		}
-		// XXX the above line is assuming op after fini keeps jump, fail, ptr, val, size and r_anal_op_is_eob()
-		switch (str[1]) {
-		case 'i': // "$i"
-			if (ok) {
-				*ok = true;
-			}
-			return numvar_instruction (core, str + 2);
-		case 'I': // "$I"
-			if (ok) {
-				*ok = true;
-			}
-			return numvar_instruction_backward (core, str + 2);
-		case '.': // can use pc, sp, a0, a1, ...
-			return r_debug_reg_get (core->dbg, str + 2);
-		case 'k': // $k{kv}
-			if (str[2] != '{') {
-				R_LOG_ERROR ("Expected '{' after 'k'");
-				break;
-			}
-			bptr = strdup (str + 3);
-			ptr = strchr (bptr, '}');
-			if (!ptr) {
-				// invalid json
-				free (bptr);
-				break;
-			}
-			*ptr = '\0';
-			ret = 0LL;
-			out = sdb_querys (core->sdb, NULL, 0, bptr);
-			if (out && *out) {
-				if (strstr (out, "$k{")) {
-					R_LOG_ERROR ("Recursivity is not permitted here");
-				} else {
-					ret = r_num_math (core->num, out);
-				}
-			}
-			free (bptr);
-			free (out);
-			return ret;
-		case '{': // ${ev} eval var
-			bptr = strdup (str + 2);
-			ptr = strchr (bptr, '}');
-			if (ptr) {
-				ptr[0] = '\0';
-				ut64 ret = r_config_get_i (core->config, bptr);
-				free (bptr);
-				return ret;
-			}
-			// take flag here
-			free (bptr);
-			break;
-		case 'c': // $c console width
-			return r_cons_get_size (NULL);
-		case 'd': // $d - same as 'op'
-			if (core->io && core->io->desc) {
-				return core->io->desc->fd;
-			}
-			return 0;
-		case 'r': // $r
-			if (str[2] == '{' || str[2] == ':') {
-				bptr = strdup (str + 3);
-				if (str[2] == '{') {
-					ptr = strchr (bptr, '}');
-					if (!ptr) {
-						free (bptr);
-						break;
-					}
-					*ptr = 0;
-				}
-				if (r_config_get_b (core->config, "cfg.debug")) {
-					if (r_debug_reg_sync (core->dbg, R_REG_TYPE_GPR, false)) {
-						RRegItem *r = r_reg_get (core->dbg->reg, bptr, -1);
-						if (r) {
-							free (bptr);
-							return r_reg_get_value (core->dbg->reg, r);
-						}
-					}
-				} else {
-					RRegItem *r = r_reg_get (core->anal->reg, bptr, -1);
-					if (r) {
-						free (bptr);
-						return r_reg_get_value (core->anal->reg, r);
-					}
-				}
-				free (bptr);
-				return 0; // UT64_MAX;
-			} else {
-				int rows;
-				(void)r_cons_get_size (&rows);
-				return rows;
-			}
-			break;
-		case 'e': // $e
-			if (str[2] == '{') { // $e{flag} flag off + size
-				char *flagName = strdup (str + 3);
-				int flagLength = strlen (flagName);
-				if (flagLength > 0) {
-					flagName[flagLength - 1] = 0;
-				}
-				RFlagItem *flag = r_flag_get (core->flags, flagName);
-				free (flagName);
-				if (flag) {
-					return flag->offset + flag->size;
-				}
-				return UT64_MAX;
-			}
-			return r_anal_op_is_eob (&op);
-		case 'j': // $j jump address
-			return op.jump;
-		case 'p': // $p
-			return r_sys_getpid ();
-		case 'P': // $P
-			return core->dbg->pid > 0 ? core->dbg->pid : 0;
-		case 'f': // $f jump fail address
-			if (str[2] == 'l') { // $fl flag length
-				RFlagItem *fi = r_flag_get_i (core->flags, core->offset);
-				if (fi) {
-					return fi->size;
-				}
-				return 0;
-			}
-			return op.fail;
-		case 'm': // $m memref
-			return op.ptr;
-		case 'B': // $B base address
-		case 'M': { // $M map address
-				ut64 lower = UT64_MAX;
-				ut64 size = 0LL;
-				RIOMap *map = r_io_map_get_at (core->io, core->offset);
-				if (map) {
-					lower = r_io_map_begin (map);
-					size = r_io_map_size (map);
-				}
-
-				if (str[1] == 'B') {
-					/* clear lower bits of the lowest map address to define the base address */
-					const int clear_bits = 16;
-					lower >>= clear_bits;
-					lower <<= clear_bits;
-				}
-				if (str[2] == 'M') {
-					return size;
-				}
-				return (lower == UT64_MAX)? 0LL: lower;
-			}
-			break;
-		case 'v': // $v immediate value
-			return op.val;
-		case 'l': // $l opcode length
-			return op.size;
-		case 'b': // $b
-			return core->blocksize;
-		case 's': // $s file size
-			if (str[2] == '{') { // $s{flag} flag size
-				bptr = strdup (str + 3);
-				ptr = strchr (bptr, '}');
-				if (!ptr) {
-					// invalid json
-					free (bptr);
-					break;
-				}
-				*ptr = '\0';
-				RFlagItem *flag = r_flag_get (core->flags, bptr);
-				ret = flag? flag->size: 0LL; // flag
-				free (bptr);
-				free (out);
-				return ret;
-			} else if (core->io->desc) {
-				return r_io_fd_size (core->io, core->io->desc->fd);
-			}
-			return 0LL;
-		case 'w': // $w word size
-			return r_config_get_i (core->config, "asm.bits") / 8;
-		case 'S': // $S section offset
-			{
-				RBinObject *bo = r_bin_cur_object (core->bin);
-				if (bo && (s = r_bin_get_section_at (bo, core->offset, true))) {
-					return (str[2] == 'S'? s->size: s->vaddr);
-				}
-			}
-			return 0LL;
-		case 'D': // $D
-			if (str[2] == 'B') { // $DD
-				return r_debug_get_baddr (core->dbg, NULL);
-			} else if (isdigit (str[2])) {
-				return getref (core, atoi (str + 2), 'r', R_ANAL_REF_TYPE_DATA);
-			} else {
-				RDebugMap *map;
-				RListIter *iter;
-				r_list_foreach (core->dbg->maps, iter, map) {
-					if (core->offset >= map->addr && core->offset < map->addr_end) {
-						return (str[2] == 'D')? map->size: map->addr;
-					}
-				}
-			}
-			return 0LL; // maybe // return UT64_MAX;
-		case '?': // $?
-			return core->num->value; // rc;
-		case '$': // $$ offset
-			return str[2] == '$' ? core->prompt_offset : core->offset;
-		case 'o': { // $o
-			RBinSection *s = r_bin_get_section_at (r_bin_cur_object (core->bin), core->offset, true);
-			return s ? core->offset - s->vaddr + s->paddr : core->offset;
-		}
-		case 'O': // $O
-			if (core->print->cur_enabled) {
-				return core->offset + core->print->cur;
-			}
-			return core->offset;
-		case 'C': // $C nth call
-			return getref (core, atoi (str + 2), 'r', R_ANAL_REF_TYPE_CALL);
-		case 'J': // $J nth jump
-			return getref (core, atoi (str + 2), 'r', R_ANAL_REF_TYPE_CODE);
-		case 'X': // $X nth xref
-			return getref (core, atoi (str + 2), 'x', R_ANAL_REF_TYPE_CALL);
-		case 'F': // $F function size
-			fcn = r_anal_get_fcn_in (core->anal, core->offset, 0);
-			if (fcn) {
-				switch (str[2]) {
-				/* function bounds (uppercase) */
-				case 'B': return fcn->addr; // begin
-				case 'E': return r_anal_function_max_addr (fcn); // end
-				case 'S': return (str[3] == 'S') ? r_anal_function_realsize (fcn) : r_anal_function_linear_size (fcn);
-				case 'I': return fcn->ninstr;
-				/* basic blocks (lowercase) */
-				case 'b': return bbBegin (fcn, core->offset);
-				case 'e': return bbBegin (fcn, core->offset) + bbSize (fcn, core->offset);
-				case 'i': return bbInstructions (fcn, core->offset);
-				case 's': return bbSize (fcn, core->offset);
-				case 'j': return bbJump (fcn, core->offset); // jump
-				case 'f': return bbFail (fcn, core->offset); // fail
-				}
-				return fcn->addr;
-			}
-			return 0;
-		default:
-			R_LOG_ERROR ("Invalid variable '%s'", str);
-			return 0;
-		}
-		break;
-	default:
-		{
-		const char str0 = *str;
-		if (str0 >= 'A' || str0 == ':' || str0 == '_') {
-			// NOTE: functions override flags
-			RAnalFunction *fcn = r_anal_get_function_byname (core->anal, str);
-			if (fcn) {
-				if (ok) {
-					*ok = true;
-				}
-				return fcn->addr;
-			}
-#if 0
-			ut64 addr = r_anal_function_label_get (core->anal, core->offset, str);
-			if (addr != 0) {
-				ret = addr;
-			} else {
-				...
-			}
-#endif
-			if ((flag = r_flag_get (core->flags, str))) {
-				ret = flag->offset;
-				if (ok) {
-					*ok = true;
-				}
-				return ret;
-			}
-
-			// check for reg alias
-			struct r_reg_item_t *r = r_reg_get (core->dbg->reg, str, -1);
-			if (!r) {
-				int role = r_reg_get_name_idx (str);
-				if (role != -1) {
-					const char *alias = r_reg_get_name (core->dbg->reg, role);
-					if (alias) {
-						r = r_reg_get (core->dbg->reg, alias, -1);
-						if (r) {
-							if (ok) {
-								*ok = true;
-							}
-							ret = r_reg_get_value (core->dbg->reg, r);
-							return ret;
-						}
-					}
-				}
-			} else {
-				if (ok) {
-					*ok = true;
-				}
-				ret = r_reg_get_value (core->dbg->reg, r);
-				return ret;
-			}
-		}
-		}
-		break;
-	}
-
-	return ret;
-}
+#include "numvars.inc.c"
 
 R_API RCore *r_core_new(void) {
 	RCore *c = R_NEW0 (RCore);
@@ -2896,24 +2325,17 @@ static void cb_event_handler(REvent *ev, int event_type, void *user, void *data)
 	char *str = r_base64_encode_dyn (rems->string, -1);
 	switch (event_type) {
 	case R_EVENT_META_SET:
-		switch (rems->type) {
-		case 'C':
+		if (rems->type == 'C') {
 			pstr = r_str_newf (":add-comment 0x%08"PFMT64x" %s\n", rems->addr, r_str_get (str));
 			r_core_log_add (ev->user, pstr);
 			free (pstr);
-			break;
-		default:
-			break;
 		}
 		break;
 	case R_EVENT_META_DEL:
-		switch (rems->type) {
-		case 'C':
+		if (rems->type == 'C') {
 			r_core_log_add (ev->user, r_strf (":del-comment 0x%08"PFMT64x, rems->addr));
-			break;
-		default:
+		} else {
 			r_core_log_add (ev->user, r_strf (":del-comment 0x%08"PFMT64x, rems->addr));
-			break;
 		}
 		break;
 	case R_EVENT_META_CLEAR:
@@ -3347,10 +2769,8 @@ R_API bool r_core_init(RCore *core) {
 #endif
 	if (R_SYS_BITS & R_SYS_BITS_64) {
 		r_config_set_i (core->config, "asm.bits", 64);
-	} else {
-		if (R_SYS_BITS & R_SYS_BITS_32) {
-			r_config_set_i (core->config, "asm.bits", 32);
-		}
+	} else if (R_SYS_BITS & R_SYS_BITS_32) {
+		r_config_set_i (core->config, "asm.bits", 32);
 	}
 	r_config_set (core->config, "asm.arch", R_SYS_ARCH);
 	r_bp_use (core->dbg->bp, R_SYS_ARCH, core->anal->config->bits);
@@ -3574,10 +2994,14 @@ static void set_prompt(RCore *r) {
 		r_core_cmd (r, cmdprompt, 0);
 	}
 
-	if (r_config_get_b (r->config, "scr.prompt.file")) {
+	if (r_config_get_b (r->config, "scr.prompt.prj")) {
+		free (filename);
+		const char *pn = r_config_get (r->config, "prj.name");
+		filename = r_str_newf ("<%s>", pn);
+	} else if (r_config_get_b (r->config, "scr.prompt.file")) {
 		free (filename);
 		const char *fn = r->io->desc ? r_file_basename (r->io->desc->name) : "";
-		filename = r_str_newf ("\"%s\"", fn);
+		filename = r_str_newf ("<%s>", fn);
 	}
 	if (r->cmdremote) {
 		char *s = r_core_cmd_str (r, "s");

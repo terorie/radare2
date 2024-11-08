@@ -36,6 +36,7 @@ static RCoreHelpMessage help_msg_ic = {
 	"Usage: ic", "[.-+clgjsq][jq]", "Display class information",
 	"ic", "", "List classes, methods and fields (icj for json)",
 	"ic.", "", "show class and method name in current seek",
+	"ic,", "[table-query]", "query comma separated values",
 	"ic-", "[klass.method]", "delete given klass or klass.name",
 	"ic+", "[klass.method]", "add new symbol in current seek for a given klass and method name",
 	"icc", " [lang]", "List classes, methods and fields in Header Format (see bin.lang=swift,java,objc,cxx)",
@@ -50,6 +51,7 @@ static RCoreHelpMessage help_msg_ic = {
 static RCoreHelpMessage help_msg_iz = {
 	"Usage: iz", "[][jq*]", "List strings",
 	"iz", "", "strings in data sections (in JSON/Base64)",
+	"iz,", "[:help]", "perform a table query on strings listing",
 	"iz-", " [addr]", "purge string via bin.str.purge",
 	"iz*", "", "print flags and comments r2 commands for all the strings",
 	"izz", "", "search for Strings in the whole binary",
@@ -72,7 +74,19 @@ static RCoreHelpMessage help_msg_iS = {
 	"iS.", "", "current section",
 	"iS,", "[table-query]", "list sections in table using given expression",
 	"iS=", "", "show ascii-art color bars with the section ranges",
-	"iSS", "", "list memory segments (maps with om)",
+	"iSS", "[,tablequery]", "list memory segments (maps with om)",
+	NULL
+};
+
+static RCoreHelpMessage help_msg_iic = {
+	"Usage: iic", "[jkq*]", "info import classes",
+	"iic", " [symname]", "show all imports matching a class",
+	"iic", "", "list imports grouped by class",
+	"iic.", "", "show classes associated with the import in the current address",
+	"iicc", " [type]", "show kind of given symbol name",
+	"iiccx", " [type]", "show functions calling the imports of this class",
+	"iicj", "", "list grouped imports in json",
+	"iick", "", "group imports by class, listed in key/value format",
 	NULL
 };
 
@@ -82,8 +96,7 @@ static RCoreHelpMessage help_msg_i = {
 #if R2_USE_NEW_ABI
 	"i:", "[?]", "run rbinplugin specific commands",
 #endif
-	"ia", "", "show all info (imports, exports, sections..)",
-	"iA", "", "list archs found in current binary",
+	"ia", "", "list archs found in current binary (same as rabin2 -A)",
 	"ib", "", "reload the current buffer for setting of the bin (use once only)",
 	"ic", "[?]", "List classes, methods and fields (icj for json)",
 	"iC", "[j]", "show signature info (entitlements, ...)",
@@ -94,8 +107,8 @@ static RCoreHelpMessage help_msg_i = {
 	"ig", "[?][h]", "guess size of binary program (igh use human units instead of number of bytes)",
 	"ih", "[?]", "show binary headers (see iH)",
 	"iH", "[?]", "show binary headers fields",
-	"ii", "[?][j*,]", "list the symbols imported from other libraries",
-	"iic", "", "classify imports",
+	"ii", "[?][cj*,]", "list the symbols imported from other libraries",
+	"iic", "[?][jqk*] ([type])", "classify imports",
 	"iI", "", "binary info", // deprecate imho, may confuse with il and its already in `i`
 	"ik", " [query]", "key-value database from RBinObject",
 	"il", "", "libraries",
@@ -317,71 +330,254 @@ static void cmd_info_here(RCore *core, PJ *pj, int mode) {
 	}
 }
 
-static void cmd_iic(RCore *r, int mode) {
-	int i;
-	const char *type[] = {
-		"heap",
-		"string",
-		"format",
-		"buffer",
-		"network",
-		"privilege",
-		"thread",
-		"file",
-		NULL
-	};
-	const RList *imports = r_bin_get_imports (r->bin);
-	RListIter *iter;
-	RBinSymbol *imp;
-	bool first;
-	for (i = 0; type[i]; i++) {
-		first = true;
-		const char *typ = type[i];
-		r_list_foreach (imports, iter, imp) {
-			const char *name = r_bin_name_tostring2 (imp->name, 'o');
-			const char *un = r_bin_symbol_unsafe (r->bin, name);
-			if (un && !strcmp (un, typ)) {
-				if (first) {
-					r_cons_printf ("|- %s:\n", typ);
-					first = false;
-				}
-				r_cons_printf ("|  |- %s\n", name);
-				char *fname = r_str_newf ("sym.imp.%s", name);
-				RFlagItem *item = r_flag_get (r->flags, fname);
-				free (fname);
-				RVecAnalRef *xrefs = r_anal_xrefs_get (r->anal, item->offset);
-				if (xrefs) {
-					RAnalRef *xref;
-					R_VEC_FOREACH (xrefs, xref) {
-						RList *funcs = r_anal_get_functions_in (r->anal, xref->addr);
-						RAnalFunction *f = r_list_pop (funcs);
-						if (f) {
-							r_cons_printf ("|  |  |- %s\n", f->name);
-						} else {
-							r_cons_printf ("|  |  |- 0x%08"PFMT64x"\n", xref->addr);
-						}
-						r_list_free (funcs);
-					}
-				}
-				RVecAnalRef_free (xrefs);
-				// list xrefs now
-			}
-		}
+static RFlagItem *get_flag_for_import(RCore* core, const char *value) {
+	char *fname = r_str_newf ("sym.imp.%s", value);
+	RFlagItem *item = r_flag_get (core->flags, fname);
+	if (!item) {
+		free (fname);
+		fname = r_str_newf ("reloc.%s", value);
+		item = r_flag_get (core->flags, fname);
 	}
-#if 0
-	first = true;
+	free (fname);
+	return item;
+}
+
+static ut64 valstr(const void *_a) {
+	const char *a = _a;
+	return r_str_hash64 (a);
+}
+static int cmpstr(const void *_a, const void *_b) {
+	const char *a = _a, *b = _b;
+	return (int)strcmp (a, b);
+}
+static RList *uniqrefs_for(RCore *core, ut64 addr) {
+	RVecAnalRef *xrefs = r_anal_xrefs_get (core->anal, addr);
+	if (xrefs) {
+		RList *res = r_list_newf (free);
+		RAnalRef *xref;
+		R_VEC_FOREACH (xrefs, xref) {
+			RList *funcs = r_anal_get_functions_in (core->anal, xref->addr);
+			RAnalFunction *f = r_list_pop (funcs);
+			if (f) {
+				r_list_append (res, strdup (f->name));
+			} else {
+				r_list_append (res, r_str_newf ("0x%08"PFMT64x, xref->addr));
+			}
+			r_list_free (funcs);
+		}
+		RVecAnalRef_free (xrefs);
+		r_list_sort (res, cmpstr);
+		RList *nres = r_list_uniq (res, valstr);
+		res->free = NULL;
+		r_list_free (res);
+		return nres;
+	}
+	return NULL;
+}
+
+static void cmd_iic2(RCore *core, int mode, const char *symname) {
+	if (symname && !mode) {
+		const char *un = r_bin_symbol_unsafe (core->bin, symname);
+		if (R_STR_ISNOTEMPTY (un)) {
+			r_cons_println (un);
+		}
+		return;
+	}
+	const RList *imports = r_bin_get_imports (core->bin);
+	RListIter *iter, *iter2;
+	RBinSymbol *imp;
+	Sdb *db = sdb_new0 ();
 	r_list_foreach (imports, iter, imp) {
 		const char *name = r_bin_name_tostring2 (imp->name, 'o');
-		const char *un = r_bin_symbol_unsafe (r->bin, name);
+		const char *un = r_bin_symbol_unsafe (core->bin, name);
 		if (!un) {
-			if (first) {
-				r_cons_printf ("unclassified:\n");
-				first = false;
+			R_LOG_DEBUG ("Symbol not classified %s", name);
+			continue;
+		}
+		char *a = strdup (un);
+		const char *key;
+		RList *keys = r_str_split_list (a, ",", 0);
+		r_list_foreach (keys, iter2, key) {
+			ut32 cas;
+			if (!sdb_array_contains (db, key, name, &cas)) {
+				sdb_array_append (db, key, name, cas);
 			}
-			r_cons_printf (" + %s\n", name);
+		}
+		free (a);
+		r_list_free (keys);
+	}
+	if (mode == 'c') {
+		char *s = sdb_querys (db, NULL, 0, symname);
+		if (s) {
+			r_str_replace_ch (s, ',', '\n', -1);
+			r_cons_print (s);
+			free (s);
+		}
+	} else if (mode == 'x') {
+		char *s = sdb_querys (db, NULL, 0, symname);
+		if (s) {
+			RListIter *iter2;
+			const char *value;
+			RList *values = r_str_split_list (s, ",", 0);
+			RList *rrrr = NULL;
+			r_list_foreach (values, iter2, value) {
+				RFlagItem *item = get_flag_for_import (core, value);
+				if (item) {
+					RList *refs = uniqrefs_for (core, item->offset);
+					if (refs && rrrr) {
+						r_list_join (rrrr, refs);
+					} else if (refs && !rrrr) {
+						rrrr = refs;
+					} else if (!rrrr) {
+						rrrr = r_list_newf (free);
+					}
+				} else {
+					R_LOG_WARN ("Cannot resolve %s", value);
+				}
+			}
+			r_list_sort (rrrr, cmpstr);
+			RList *nres = r_list_uniq (rrrr, valstr);
+			char *ref;
+			r_list_foreach (nres, iter, ref) {
+				r_cons_println (ref);
+			}
+			free (s);
+			r_list_free (rrrr);
+		}
+	} else if (mode == '*') {
+		SdbKv *kv;
+		SdbListIter *it;
+		SdbList *keys = sdb_foreach_list (db, true);
+		ls_foreach (keys, it, kv) {
+			const char *k = sdbkv_key (kv);
+			char *v = strdup (sdbkv_value (kv));
+			const char *value;
+			RList *values = r_str_split_list (v, ",", 0);
+			r_list_foreach (values, iter2, value) {
+				RFlagItem *item = get_flag_for_import (core, value);
+				if (item) {
+					const ut64 at = item->offset;
+					r_cons_printf ("'@0x%08"PFMT64x"'CC kind(%s)\n", at, k);
+				}
+			}
+			free (v);
+			r_list_free (values);
+		}
+	} else if (mode == 'k') {
+		char *s = sdb_querys (db, NULL, 0, "*");
+		if (s) {
+			r_cons_print (s);
+			free (s);
+		}
+	} else if (mode == 'j') {
+		PJ *pj = r_core_pj_new (core);
+		pj_o (pj);
+		SdbKv *kv;
+		SdbListIter *it;
+		SdbList *keys = sdb_foreach_list (db, true);
+		ls_foreach (keys, it, kv) {
+			const char *k = sdbkv_key (kv);
+			char *v = strdup (sdbkv_value (kv));
+			pj_ko (pj, k);
+			const char *value;
+			RList *values = r_str_split_list (v, ",", 0);
+			r_list_foreach (values, iter2, value) {
+				pj_ka (pj, value);
+				RFlagItem *item = get_flag_for_import (core, value);
+				if (item) {
+					RList *refs = uniqrefs_for (core, item->offset);
+					RListIter *iter;
+					char *ref;
+					r_list_foreach (refs, iter, ref) {
+						pj_s (pj, ref);
+					}
+					r_list_free (refs);
+				} else {
+					R_LOG_WARN ("Cannot resolve %s", value);
+				}
+				pj_end (pj);
+			}
+			pj_end (pj);
+			free (v);
+			r_list_free (values);
+		}
+		pj_end (pj);
+		char *s = pj_drain (pj);
+		r_cons_print (s);
+		free (s);
+	} else {
+		SdbKv *kv;
+		SdbListIter *it;
+		SdbList *keys = sdb_foreach_list (db, true);
+		ls_foreach (keys, it, kv) {
+			const char *k = sdbkv_key (kv);
+			char *v = strdup (sdbkv_value (kv));
+			r_cons_printf ("|- %s:\n", k);
+			const char *value;
+			RList *values = r_str_split_list (v, ",", 0);
+			r_list_foreach (values, iter2, value) {
+				r_cons_printf ("|  |- %s\n", value);
+				RFlagItem *item = get_flag_for_import (core, value);
+				if (item) {
+					RList *refs = uniqrefs_for (core, item->offset);
+					RListIter *iter;
+					char *ref;
+					r_list_foreach (refs, iter, ref) {
+						r_cons_printf ("|  |  |- %s\n", ref);
+					}
+					r_list_free (refs);
+				} else {
+					R_LOG_WARN ("Cannot resolve %s", value);
+				}
+			}
+			free (v);
+			r_list_free (values);
 		}
 	}
-#endif
+	sdb_free (db);
+}
+
+static int cmd_iic(RCore *core, const char *input) {
+	switch (input[2]) {
+	case 'j': // "iicj"
+	case 'q': // "iicq"
+	case 'k': // "iick"
+	case '*': // "iic*"
+	case 0: // "iic"
+		cmd_iic2 (core, input[2], NULL);
+		break;
+	case '.':
+		{
+			char *here = r_core_cmd_str (core, "fd.");
+			r_str_trim (here);
+			here = r_str_replace (here, "sym.imp.", "", 0);
+			here = r_str_replace (here, "reloc.", "", 0);
+			cmd_iic2 (core, 0, here);
+			free (here);
+		}
+		break;
+	case ' ': // "iic "
+		cmd_iic2 (core, 0, r_str_trim_head_ro (input + 3));
+		break;
+	case 'c': // "iicc"
+		if (input[3] == 'x') { // "iiccx"
+			cmd_iic2 (core, 'x', r_str_trim_head_ro (input + 4));
+		} else if (input[3] == ' ') { // "iicc"
+			cmd_iic2 (core, 'c', r_str_trim_head_ro (input + 3));
+		} else if (input[3] == '?') { // "iicc?"
+			r_core_cmd_help_contains (core, help_msg_iic, "iicc");
+		} else {
+			r_core_return_invalid_command (core, "iicc", input[3]);
+		}
+		break;
+	case '?': // "iic?"
+		r_core_cmd_help (core, help_msg_iic);
+		break;
+	default:
+		r_core_return_invalid_command (core, "iic", input[2]);
+		break;
+	}
+	return 0;
 }
 
 static void r_core_file_info(RCore *core, PJ *pj, int mode) {
@@ -848,10 +1044,10 @@ static void cmd_ic0(RCore *core, RBinObject *obj, int mode, PJ *pj, bool is_arra
 			continue;
 		}
 		if (is_doublerad) {
-			r_cons_printf ("ac %s\n", kname);
+			r_cons_printf ("'ac %s\n", kname);
 			r_list_foreach (cls->methods, iter2, sym) {
 				const char *name = r_bin_name_tostring2 (sym->name, pref);
-				r_cons_printf ("ac %s %s 0x%08"PFMT64x"\n", kname,
+				r_cons_printf ("'ac %s %s 0x%08"PFMT64x"\n", kname,
 						name, iova? sym->vaddr: sym->paddr);
 			}
 			continue;
@@ -978,6 +1174,8 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 	case '+': // "ic+"
 		cmd_ic_add (core, r_str_trim_head_ro (input + 1));
 		break;
+	case ',':
+		mode = ',';
 	// commands that iterate
 	case ' ': // "ic "
 	case 'k': // "ick"
@@ -1020,8 +1218,8 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 				return;
 			}
 			r_list_foreach (objs, objs_iter, bf) {
-				RBinObject *obj = bf->bo;
-				if (!obj || !obj->classes || r_list_empty (obj->classes)) {
+				RBinObject *bo = bf->bo;
+				if (!bo || !bo->classes || r_list_empty (bo->classes)) {
 					if (r_str_startswith (input, "lc")) { // "iclc"
 						r_cons_printf ("0\n");
 					}
@@ -1038,7 +1236,7 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 				core->bin->cur = bf;
 
 				if (is_superquiet && is_jvm) {
-					r_list_foreach (obj->classes, iter, cls) {
+					r_list_foreach (bo->classes, iter, cls) {
 						const char *kname = r_bin_name_tostring (cls->name);
 						if (!isKnownAndroidPackage (kname)) {
 							r_cons_printf ("%s\n", kname);
@@ -1046,13 +1244,13 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 					}
 					break;
 				}
-				tts_say (core, "classes", r_list_length (obj->classes));
+				tts_say (core, "classes", r_list_length (bo->classes));
 				switch (cmd) {
 				case 'g':
-					cmd_icg (core, obj, arg);
+					cmd_icg (core, bo, arg);
 					break;
 				case 's': // "ics"
-					r_list_foreach (obj->classes, iter, cls) {
+					r_list_foreach (bo->classes, iter, cls) {
 						const char *kname = r_bin_name_tostring (cls->name);
 						r_list_foreach (cls->methods, iter2, sym) {
 							ut64 addr = iova? sym->vaddr: sym->paddr;
@@ -1065,13 +1263,13 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 					}
 					break;
 				case 'k': // "ick"
-					classdump_keys (core, obj);
-					return;
+					classdump_keys (core, bo);
+					break;
 				case 'l': // "icl"
 					if (r_str_startswith (input, "lc")) {
-						cmd_ic0 (core, obj, 'c', pj, is_array, va, idx, cls_name, &count, is_doublerad);
+						cmd_ic0 (core, bo, 'c', pj, is_array, va, idx, cls_name, &count, is_doublerad);
 					} else {
-						r_list_foreach (obj->classes, iter, cls) {
+						r_list_foreach (bo->classes, iter, cls) {
 							r_list_foreach (cls->methods, iter2, sym) {
 								const char *comma = iter2->p? " ": "";
 								r_cons_printf ("%s0x%"PFMT64x, comma,
@@ -1089,7 +1287,7 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 					ut64 min = UT64_MAX;
 					const char *method = NULL;
 					ut64 max = 0LL;
-					r_list_foreach (obj->classes, iter, cls) {
+					r_list_foreach (bo->classes, iter, cls) {
 						method = NULL;
 						r_list_foreach (cls->methods, iter2, sym) {
 							ut64 at = iova? sym->vaddr: sym->paddr;
@@ -1121,7 +1319,7 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 					if (mode == '*') {
 						mode |= R_MODE_RADARE;
 					} else if (mode == 'k') { // "icck"
-						classdump_keys (core, obj);
+						classdump_keys (core, bo);
 						return;
 					}
 					const char *lang = strchr (input, ' ');
@@ -1130,7 +1328,7 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 						olang = strdup (r_config_get (core->config, "bin.lang"));
 						r_config_set (core->config, "bin.lang", lang + 1);
 					}
-					RBININFO ("classes", R_CORE_BIN_ACC_CLASSES, NULL, r_list_length (obj->classes));
+					RBININFO ("classes", R_CORE_BIN_ACC_CLASSES, NULL, r_list_length (bo->classes));
 					if (olang) {
 						r_config_set (core->config, "bin.lang", olang);
 						free (olang);
@@ -1142,17 +1340,22 @@ static void cmd_ic(RCore *core, const char *input, PJ *pj, bool is_array, bool v
 						mode = R_MODE_JSON;
 					}
 					// TODO add the ability to filter by name
-					RBININFO ("classes", R_CORE_BIN_ACC_CLASSES, NULL, r_list_length (obj->classes));
+					RBININFO ("classes", R_CORE_BIN_ACC_CLASSES, NULL, r_list_length (bo->classes));
 					break;
 				case ' ': // "ic"
 				case 0: // "ic"
+					cmd_ic0 (core, bo, mode, pj, is_array, va, idx, cls_name, &count, is_doublerad);
+					break;
 				default:
-					cmd_ic0 (core, obj, mode, pj, is_array, va, idx, cls_name, &count, is_doublerad);
+					r_core_return_invalid_command (core, "ic", mode);
 					break;
 				}
 				core->bin->cur = cur;
 			}
 		}
+		break;
+	default:
+		r_core_return_invalid_command (core, "ic", cmd);
 		break;
 	}
 }
@@ -1217,12 +1420,16 @@ static void cmd_iz(RCore *core, PJ *pj, int mode, int is_array, bool va, const c
 		// "iz"
 		bool validcmd = true;
 		switch (input[1]) {
-		case 'J':
+		case ',': // "iz,"
+			R_FREE (core->table_query);
+			core->table_query = strdup (input + 2);
+			break;
+		case 'J': // "izJ"
 			validcmd = false;
 			break;
-		case '*':
-		case 'j':
-		case 0:
+		case '*': // "iz*"
+		case 'j': // "izj"
+		case 0: // "iz"
 			validcmd = true;
 			break;
 		case 'q':
@@ -1280,6 +1487,10 @@ static void cmd_iS(RCore *core, const char *input, PJ **_pj, int mode, const boo
 		if (input[1] == 'S') {
 			name = "segments";
 			input++;
+			if (input[1] == ',') {
+				R_FREE (core->table_query);
+				core->table_query = strdup (input + 2);
+			}
 			action = R_CORE_BIN_ACC_SEGMENTS;
 		}
 		switch (input[1]) {
@@ -1751,12 +1962,16 @@ static int cmd_info(void *data, const char *input) {
 		break;
 	case 'i': // "ii"
 		if (input[1] == 'c') { // "iic"
-			cmd_iic (core, 0); // TODO: support json, etc
+			return cmd_iic (core, input);
 		} else {
 			RList *objs = r_core_bin_files (core);
 			RListIter *iter;
 			RBinFile *bf;
 			RBinFile *cur = core->bin->cur;
+			if (input[1] == ',') {
+				R_FREE (core->table_query);
+				core->table_query = strdup (input + 2);
+			}
 			if (!r_list_empty (objs)) {
 				r_list_foreach (objs, iter, bf) {
 					RBinObject *obj = bf->bo;
@@ -1883,40 +2098,7 @@ static int cmd_info(void *data, const char *input) {
 		}
 		input = input + strlen (input) - 1;
 		break;
-	case 'a': // "ia"
-		if (r_bin_cur_object (core->bin)) {
-			int narg = 0;
-			switch (mode) {
-			case R_MODE_RADARE: narg = '*'; break;
-			case R_MODE_SIMPLE: narg = 'q'; break;
-			case R_MODE_JSON: // "iaj"
-				r_cons_printf ("{\"info\":");
-				narg = 'j';
-				break;
-			}
-			char cmd[8];
-			cmd[0] = narg;
-			cmd[1] = 0;
-			cmd_info (core, cmd);
-			cmd[1] = narg;
-			cmd[2] = 0;
-			const char *subcmds = "ieEcsSmz"; // TODO: deprecate
-			while (*subcmds) {
-				cmd[0] = *subcmds;
-				if (mode == R_MODE_JSON) {
-					r_cons_printf (",\"i%c\":", *subcmds);
-				}
-				cmd_info (core, cmd);
-				subcmds++;
-			}
-			if (mode == R_MODE_JSON) {
-				r_cons_print ("}");
-			}
-		} else {
-			r_cons_print ("{}");
-		}
-		break;
-	case 'A': // "iA"
+	case 'a': // "iA"
 		if (input[1] == 'j') {
 			pj_o (pj); // weird
 			r_bin_list_archs (core->bin, pj, 'j');

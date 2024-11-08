@@ -1,7 +1,6 @@
 /* radare2 - LGPL - Copyright 2013-2024 - pancake */
 
 #include <r_asm.h>
-#include <r_lib.h>
 #include <capstone/capstone.h>
 #include <capstone/mips.h>
 
@@ -94,7 +93,7 @@ R_IPI int mips_assemble(const char *str, ut64 pc, ut8 *out);
 #define ES_ADD_CK64_OVERF(x, y, z) es_add_ck (op, x, y, z, 64)
 
 // * cs6 compatibility *
-#if CS_NEXT_VERSION == 6
+#if CS_API_MAJOR == 6
 // XXX - There are more options than EQ or QB, need to be tested:
 #define MIPS_INS_CMPU MIPS_INS_CMPU_EQ_QB
 #define MIPS_INS_CMPGU MIPS_INS_CMPGU_EQ_QB
@@ -1437,8 +1436,9 @@ static bool encode(RArchSession *as, RAnalOp *op, RArchEncodeMask mask) {
 const RArchPlugin r_arch_plugin_mips_cs = {
 	.meta = {
 		.name = "mips",
+		.author = "pancake",
 		.desc = "Capstone MIPS analyzer",
-		.license = "BSD",
+		.license = "Apache-2.0",
 	},
 	.arch = "mips",
 	.cpus = "mips32/64,micro,r6,v3,v2",

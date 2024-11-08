@@ -1,16 +1,9 @@
-/* radare - LGPL - Copyright 2015-2021 - pancake */
+/* radare - LGPL - Copyright 2015-2024 - pancake */
 
-#include "r_io.h"
-#include "r_lib.h"
-#include "r_socket.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
+#include <r_io.h>
+#include <r_socket.h>
 
-/* --------------------------------------------------------- */
 #define R2P(x) ((R2Pipe*)(x)->data)
-
-// TODO: add r2pipe_assert
 
 static int __write(RIO *io, RIODesc *fd, const ut8 *buf, int count) {
 	char fmt[4096];
@@ -133,9 +126,9 @@ static bool __close(RIODesc *fd) {
 
 static ut64 __lseek(RIO *io, RIODesc *fd, ut64 offset, int whence) {
 	switch (whence) {
-	case SEEK_SET: return offset;
-	case SEEK_CUR: return io->off + offset;
-	case SEEK_END: return UT64_MAX - 1;
+	case R_IO_SEEK_SET: return offset;
+	case R_IO_SEEK_CUR: return io->off + offset;
+	case R_IO_SEEK_END: return UT64_MAX - 1;
 	}
 	return offset;
 }
@@ -168,20 +161,22 @@ static char *__system(RIO *io, RIODesc *fd, const char *msg) {
 		return NULL;
 	}
 	char *res = r2pipe_read (R2P (fd));
-	//eprintf ("%s\n", res);
-	/* TODO: parse json back */
-	char *r = strstr (res, "result");
-	if (r) {
-		int rescount = atoi (r + 6 + 1);
-		R_LOG_INFO ("RESULT %d", rescount);
+	if (R_LIKELY (res)) {
+		/* TODO: parse json back */
+		char *r = strstr (res, "result");
+		if (r) {
+			int rescount = atoi (r + 6 + 1);
+			R_LOG_INFO ("RESULT %d", rescount);
+		}
+		free (res);
 	}
-	free (res);
 	return NULL;
 }
 
 RIOPlugin r_io_plugin_r2pipe = {
 	.meta = {
 		.name = "r2pipe",
+		.author = "pancake",
 		.desc = "r2pipe io plugin",
 		.license = "MIT",
 	},

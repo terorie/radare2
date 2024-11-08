@@ -1384,6 +1384,14 @@ static bool cb_dirhome(void *user, void *data) {
 	return true;
 }
 
+static bool cb_dir_cache(void *user, void *data) {
+	RConfigNode *node = (RConfigNode*) data;
+	if (node->value) {
+		r_sys_setenv ("XDG_CACHE_HOME", node->value);
+	}
+	return true;
+}
+
 static bool cb_dir_projects(void *user, void *data) {
 	RConfigNode *node = (RConfigNode *)data;
 	char *value = R_STR_ISNOTEMPTY (node->value)? node->value: NULL;
@@ -2563,13 +2571,11 @@ static bool cb_scrstrconv(void *user, void *data) {
 	if (*node->value == '?') {
 		if (strlen (node->value) > 1 && node->value[1] == '?') {
 			r_cons_printf ("Valid values for scr.strconv:\n"
-				"  asciiesc  convert to ascii with non-ascii chars escaped\n"
-				"  asciidot  convert to ascii with non-ascii chars turned into a dot (except control chars stated below)\n"
-				"\n"
-				"Ascii chars are in the range 0x20-0x7e. Always escaped control chars are alert (\\a),\n"
-				"backspace (\\b), formfeed (\\f), newline (\\n), carriage return (\\r), horizontal tab (\\t)\n"
-				"and vertical tab (\\v). Also, double quotes (\\\") are always escaped, but backslashes (\\\\)\n"
-				"are only escaped if str.escbslash = true.\n");
+				"  asciiesc  convert to ascii with non-ascii chars escaped (see str.escbslash)\n"
+				"  asciidot  non-printable chars are represented with a dot\n"
+				"  pascal    takes the first byte as the length for the string\n"
+				"  raw       perform no conversion from non-ascii chars\n"
+			);
 		} else {
 			print_node_options (node);
 		}
@@ -3330,6 +3336,15 @@ static bool cb_config_log_level(void *coreptr, void *nodeptr) {
 		r_cons_printf ("5 - debug\n");
 		return false;
 	}
+	int i;
+	const char *uvalue = node->value;
+	for (i = 0; i < R_LOG_LEVEL_LAST; i++) {
+		const char *m = r_log_level_tostring (i);
+		if (r_str_casecmp (m, uvalue) == 0) {
+			r_log_set_level (i);
+			return true;
+		}
+	}
 	r_log_set_level (node->i_value);
 	return true;
 }
@@ -3822,8 +3837,10 @@ R_API int r_core_config_init(RCore *core) {
 	// options for the comments in the disassembly
 	SETBPREF ("asm.anos", "true", "show annotations (see ano command)");
 	SETBPREF ("asm.comments", "true", "show comments in disassembly view (see 'e asm.cmt.')");
+	SETBPREF ("asm.cmt.wrap", "true", "wrap long comments lines on top ignoring asm.cmt.right");
 	SETBPREF ("asm.cmt.calls", "true", "show callee function related info as comments in disasm");
 	SETBPREF ("asm.cmt.user", "false", "show user comments even if asm.comments is false");
+	SETBPREF ("asm.cmt.pseudo", "false", "show pseudo disasm as comments (see asm.pseudo)");
 	SETBPREF ("asm.cmt.refs", "false", "show flag and comments from refs in disasm");
 	SETBPREF ("asm.cmt.patch", "false", "show patch comments in disasm");
 	SETBPREF ("asm.cmt.off", "nodup", "show offset comment in disasm (true, false, nodup)");
@@ -3994,6 +4011,9 @@ R_API int r_core_config_init(RCore *core) {
 	p = r_sys_getenv (R_SYS_TMP);
 	SETCB ("dir.tmp", r_str_get (p), &cb_dirtmp, "path of the tmp directory");
 	free (p);
+	char *cd = r_xdg_cachedir (NULL);
+	SETCB ("dir.cache", cd, &cb_dir_cache, "override default cache directory (XDG_CACHE_HOME)");
+	free (cd);
 	char *prjdir = r_xdg_datadir ("projects");
 	SETCB ("dir.projects", prjdir, &cb_dir_projects, "default path for projects");
 	free (prjdir);
@@ -4051,7 +4071,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETCB ("dbg.wrap", "false", &cb_dbg_wrap, "enable the ptrace-wrap abstraction layer (needed for debugging from iaito)");
 	SETCB ("dbg.libs", "", &cb_dbg_libs, "If set stop when loading matching libname");
 	SETBPREF ("dbg.skipover", "false", "make dso perform a dss (same goes for esil and visual/graph");
-#if __APPLE__
+#if __APPLE__ && __x86_64__
 	SETBPREF ("dbg.hwbp", "true", "use hardware breakpoints instead of software ones when enabled");
 #else
 	SETBPREF ("dbg.hwbp", "false", "use hardware breakpoints instead of software ones when enabled");
@@ -4366,6 +4386,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETPREF ("scr.prompt.tabhelp", "true", "show command help when pressing the TAB key");
 	SETCB ("scr.prompt.mode", "false", &cb_scr_prompt_mode,  "set prompt color based on vi mode");
 	SETBPREF ("scr.prompt.file", "false", "show user prompt file (used by r2 -q)");
+	SETBPREF ("scr.prompt.prj", "false", "show currently used project in prompt");
 	SETBPREF ("scr.prompt.flag", "false", "show flag name in the prompt");
 	SETBPREF ("scr.prompt.sect", "false", "show section name in the prompt");
 	SETBPREF ("scr.tts", "false", "use tts if available by a command (see ic)");
@@ -4379,7 +4400,7 @@ R_API int r_core_config_init(RCore *core) {
 	SETBPREF ("scr.color.args", "true", "colorize arguments and variables of functions");
 	SETBPREF ("scr.color.bytes", "true", "colorize bytes that represent the opcodes of the instruction");
 	SETCB ("scr.null", "false", &cb_scrnull, "show no output");
-	SETCB ("scr.utf8", r_str_bool (r_cons_is_utf8()), &cb_utf8, "show UTF-8 characters instead of ANSI");
+	SETCB ("scr.utf8", r_str_bool (r_cons_is_utf8 ()), &cb_utf8, "show UTF-8 characters instead of ANSI");
 	SETCB ("scr.utf8.curvy", "false", &cb_utf8_curvy, "show curved UTF-8 corners (requires scr.utf8)");
 	SETCB ("scr.demo", "false", &cb_scr_demo, "use demoscene effects if available");
 	SETPREF ("scr.analbar", "false", "show progressbar for aaa instead of logging what its doing");
@@ -4390,15 +4411,15 @@ R_API int r_core_config_init(RCore *core) {
 #else
 	SETBPREF ("scr.hist.save", "true", "always save history on exit");
 #endif
-	SETICB("scr.hist.size", R_LINE_HISTSIZE, &cb_scr_histsize, "set input lines history size");
-	n = NODECB ("scr.strconv", "asciiesc", &cb_scrstrconv);
+	SETICB ("scr.hist.size", R_LINE_HISTSIZE, &cb_scr_histsize, "set input lines history size");
+	n = NODECB ("scr.strconv", "asciiesc", &cb_scrstrconv); // TODO: move this into asm. or sthg else?
 	SETDESC (n, "convert string before display");
-	SETOPTIONS (n, "asciiesc", "asciidot", NULL);
+	SETOPTIONS (n, "asciiesc", "asciidot", "raw", "pascal", NULL); // TODO: add ebcdic here and other charset plugins here!!
 	SETBPREF ("scr.confirmquit", "false", "Confirm on quit");
 	SETBPREF ("scr.progressbar", "false", "display a progress bar when running scripts.");
 
 	/* str */
-	SETCB ("str.escbslash", "false", &cb_str_escbslash, "escape the backslash");
+	SETCB ("str.escbslash", "false", &cb_str_escbslash, "escape the backslash"); // XXX this is the only var starting with 'str.'
 
 	/* search */
 	SETCB ("search.contiguous", "true", &cb_contiguous, "accept contiguous/adjacent search hits");
@@ -4452,6 +4473,8 @@ R_API int r_core_config_init(RCore *core) {
 	SETICB ("io.0xff", 0xff, &cb_io_oxff, "use this value instead of 0xff to fill unallocated areas");
 	SETCB ("io.aslr", "false", &cb_ioaslr, "disable ASLR for spawn and such");
 	SETCB ("io.va", "true", &cb_iova, "use virtual address layout");
+	SETBPREF ("io.voidwrites", "true",
+		"handle writes to fully unmapped areas as valid operations (requires io.va to be set)");
 	SETI ("io.mapinc", 0x10000000, "increment map address when overlap with r_io_map_locate");
 	SETCB ("io.pava", "false", &cb_io_pava, "use EXPERIMENTAL paddr -> vaddr address mode");
 	SETCB ("io.autofd", "true", &cb_ioautofd, "change fd when opening a new file");

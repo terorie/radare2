@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2010-2023 pancake */
+/* radare - LGPL - Copyright 2010-2024 pancake, defragger */
 
 #include <r_io.h>
 #include <r_lib.h>
@@ -140,7 +140,7 @@ static RIODesc *__open(RIO *io, const char *file, int rw, int mode) {
 }
 
 static int __write(RIO *io, RIODesc *fd, const ut8 *buf, int count) {
-	ut64 addr = io->off;
+	const ut64 addr = io->off;
 	if (!desc || !desc->data) {
 		return -1;
 	}
@@ -156,7 +156,8 @@ static ut64 __lseek(RIO *io, RIODesc *fd, ut64 offset, int whence) {
 		io->off += offset;
 		break;
 	case R_IO_SEEK_END:
-		io->off = ST64_MAX;
+		io->off = UT64_MAX;
+		break;
 	}
 	return io->off;
 }
@@ -399,7 +400,8 @@ static char *__system(RIO *io, RIODesc *fd, const char *cmd) {
 RIOPlugin r_io_plugin_gdb = {
 	.meta = {
 		.name = "gdb",
-		.license = "LGPL3",
+		.author = "defragger",
+		.license = "LGPL-3.0-only",
 		.desc = "Attach to gdbserver instance",
 	},
 	//void *plugin;

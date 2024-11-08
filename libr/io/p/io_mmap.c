@@ -1,4 +1,4 @@
-/* radare - LGPL - Copyright 2013-2022 - pancake */
+/* radare - LGPL - Copyright 2013-2024 - pancake */
 
 #include <r_userconf.h>
 #include <r_io.h>
@@ -18,15 +18,16 @@ typedef struct r_io_mmo_t {
 static ut64 r_io_mmap_seek(RIO *io, RIOMMapFileObj *mmo, ut64 offset, int whence) {
 	ut64 seek_val = r_buf_tell (mmo->buf);
 	switch (whence) {
-	case SEEK_SET:
+	case R_IO_SEEK_SET:
 		seek_val = (r_buf_size (mmo->buf) < offset)? r_buf_size (mmo->buf): offset;
 		r_buf_seek (mmo->buf, io->off = seek_val, R_BUF_SET);
 		return seek_val;
-	case SEEK_CUR:
-		seek_val = (r_buf_size (mmo->buf) < (offset + r_buf_tell (mmo->buf)))? r_buf_size (mmo->buf): offset + r_buf_tell (mmo->buf);
+	case R_IO_SEEK_CUR:
+		seek_val = (r_buf_size (mmo->buf) < (offset + r_buf_tell (mmo->buf)))? r_buf_size (mmo->buf):
+			offset + r_buf_tell (mmo->buf);
 		r_buf_seek (mmo->buf, io->off = seek_val, R_BUF_SET);
 		return seek_val;
-	case SEEK_END:
+	case R_IO_SEEK_END:
 		seek_val = r_buf_size (mmo->buf);
 		r_buf_seek (mmo->buf, io->off = seek_val, R_BUF_SET);
 		return seek_val;
@@ -187,8 +188,9 @@ static bool __resize(RIO *io, RIODesc *fd, ut64 size) {
 RIOPlugin r_io_plugin_mmap = {
 	.meta = {
 		.name = "mmap",
+		.author = "pancake",
 		.desc = "Open files using mmap",
-		.license = "LGPL3",
+		.license = "LGPL-3.0-only",
 	},
 	.uris = "mmap://",
 	.open = __open,
